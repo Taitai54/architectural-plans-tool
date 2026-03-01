@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architectural Plans Tool</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; height: 100vh; display: flex; flex-direction: column; }
+
+  header { background: #1a1a2e; color: white; padding: 14px 24px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
+  header span { font-size: 12px; color: #8888aa; }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .sidebar { width: 320px; flex-shrink: 0; background: white; border-right: 1px solid #e0e0e8; display: flex; flex-direction: column; overflow-y: auto; }
+
+  .sidebar-section { padding: 20px; border-bottom: 1px solid #f0f0f5; }
+  .sidebar-section h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #666; margin-bottom: 12px; }
+
+  /* Upload zone */
+  .upload-zone { border: 2px dashed #c0c0d0; border-radius: 8px; padding: 28px 16px; text-align: center; cursor: pointer; transition: all 0.2s; background: #fafafa; }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: #1a1a2e; background: #f0f0f8; }
+  .upload-zone svg { margin-bottom: 10px; opacity: 0.4; }
+  .upload-zone p { font-size: 13px; color: #666; }
+  .upload-zone strong { color: #1a1a2e; }
+  #file-input { display: none; }
+
+  /* File info */
+  .file-info { background: #f0f4ff; border-radius: 6px; padding: 10px 12px; font-size: 12px; color: #333; display: none; }
+  .file-info strong { display: block; margin-bottom: 2px; font-size: 13px; }
+
+  /* API key */
+  .input-row { display: flex; flex-direction: column; gap: 6px; }
+  .input-row label { font-size: 12px; color: #555; font-weight: 500; }
+  .input-row input, .input-row textarea { border: 1px solid #d0d0dc; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; outline: none; transition: border 0.2s; }
+  .input-row input:focus, .input-row textarea:focus { border-color: #1a1a2e; }
+  .input-row textarea { resize: vertical; min-height: 90px; }
+
+  /* Buttons */
+  .btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .btn-primary { background: #1a1a2e; color: white; }
+  .btn-primary:hover { background: #2d2d4e; }
+  .btn-primary:disabled { background: #999; cursor: not-allowed; }
+  .btn-success { background: #cc0000; color: white; margin-top: 8px; }
+  .btn-success:hover { background: #aa0000; }
+  .btn-success:disabled { background: #999; cursor: not-allowed; }
+  .btn-outline { background: white; color: #1a1a2e; border: 1px solid #1a1a2e; margin-top: 6px; }
+  .btn-outline:hover { background: #f0f0f8; }
+
+  /* Status */
+  .status { font-size: 12px; padding: 8px 10px; border-radius: 6px; margin-top: 8px; display: none; }
+  .status.loading { background: #fff8e6; color: #8a6000; }
+  .status.error { background: #fff0f0; color: #cc0000; }
+  .status.success { background: #f0fff4; color: #006622; }
+
+  /* ── Viewer ── */
+  .viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .viewer-toolbar { background: white; border-bottom: 1px solid #e0e0e8; padding: 10px 16px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .viewer-toolbar span { font-size: 12px; color: #666; margin-right: auto; }
+  .tool-btn { background: #f0f0f8; border: 1px solid #d0d0dc; border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .tool-btn:hover { background: #e0e0ee; }
+  .tool-btn.active { background: #1a1a2e; color: white; border-color: #1a1a2e; }
+
+  .viewer-area { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 24px; }
+
+  .svg-container { background: white; box-shadow: 0 2px 16px rgba(0,0,0,0.12); transform-origin: top center; transition: transform 0.2s; }
+  .svg-container svg { display: block; max-width: 100%; }
+
+  .placeholder { text-align: center; padding: 80px 40px; color: #999; }
+  .placeholder svg { margin-bottom: 16px; opacity: 0.3; }
+  .placeholder h3 { font-size: 16px; margin-bottom: 8px; color: #666; }
+  .placeholder p { font-size: 13px; line-height: 1.6; }
+
+  /* Compare toggle */
+  .compare-bar { display: none; background: #fff8e6; border-bottom: 1px solid #f0d080; padding: 8px 16px; font-size: 12px; color: #8a6000; align-items: center; gap: 10px; flex-shrink: 0; }
+  .compare-bar.visible { display: flex; }
+
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>
+  <h1>Architectural Plans Tool</h1>
+  <span>Upload · View · Modify · Export</span>
+</header>
+
+<div class="main">
+
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar">
+
+    <div class="sidebar-section">
+      <h2>1 · Upload Plan</h2>
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <p><strong>Click to upload</strong> or drag & drop<br>PDF architectural plan</p>
+      </div>
+      <input type="file" id="file-input" accept=".pdf">
+      <div class="file-info" id="file-info">
+        <strong id="file-name"></strong>
+        <span id="file-status"></span>
+      </div>
+      <div class="status" id="upload-status"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>2 · API Key (for AI changes)</h2>
+      <div class="input-row">
+        <label>OpenAI API Key</label>
+        <input type="password" id="api-key" placeholder="sk-proj-..." autocomplete="off">
+        <span style="font-size:11px;color:#999;margin-top:2px">Only used locally. Never stored on a server.</span>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>3 · Describe Changes</h2>
+      <div class="input-row">
+        <label>What would you like to change?</label>
+        <textarea id="change-input" placeholder="e.g. Add a single-storey extension of 3m x 4m to the rear of the kitchen. Show it with red hatching as proposed new works."></textarea>
+      </div>
+      <button class="btn btn-success" id="apply-btn" disabled onclick="applyChanges()">Apply Changes with AI</button>
+      <div class="status" id="change-status"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>4 · Export</h2>
+      <button class="btn btn-outline" id="dl-svg-btn" disabled onclick="downloadSVG()">Download SVG</button>
+      <button class="btn btn-outline" id="dl-pdf-btn" disabled onclick="downloadPDF()">Print / Save as PDF</button>
+    </div>
+
+  </div>
+
+  <!-- ── VIEWER ── -->
+  <div class="viewer">
+
+    <div class="viewer-toolbar">
+      <span id="viewer-label">No plan loaded</span>
+      <button class="tool-btn" onclick="zoom(1.2)">＋ Zoom In</button>
+      <button class="tool-btn" onclick="zoom(0.8)">－ Zoom Out</button>
+      <button class="tool-btn" onclick="resetZoom()">Fit</button>
+      <button class="tool-btn active" id="view-toggle" onclick="toggleView()" style="display:none">Show Original</button>
+    </div>
+
+    <div class="compare-bar" id="compare-bar">
+      Viewing: <strong id="compare-label">Updated plan</strong> — toggle above to compare with original
+    </div>
+
+    <div class="viewer-area" id="viewer-area">
+      <div class="placeholder">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>
+        <h3>No plan loaded</h3>
+        <p>Upload a PDF architectural plan using the panel on the left.<br>The exact vector drawing will be extracted and displayed here.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  let jobId = null;
+  let scale = 1;
+  let showingOriginal = false;
+  let hasUpdated = false;
+
+  const uploadZone = document.getElementById('upload-zone');
+  const fileInput  = document.getElementById('file-input');
+
+  // Drag and drop
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+  async function handleFile(file) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      showStatus('upload-status', 'error', 'Please upload a PDF file.');
+      return;
+    }
+    showStatus('upload-status', 'loading', '<span class="spinner"></span>Extracting vector data from PDF...');
+    document.getElementById('file-info').style.display = 'block';
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('file-status').textContent = 'Uploading...';
+
+    const form = new FormData();
+    form.append('file', file);
+
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+      jobId = data.job_id;
+      document.getElementById('file-status').textContent = 'Extracted successfully';
+      showStatus('upload-status', 'success', 'Vector data extracted. Plan loaded below.');
+      document.getElementById('viewer-label').textContent = file.name;
+      document.getElementById('apply-btn').disabled = false;
+      document.getElementById('dl-svg-btn').disabled = false;
+      document.getElementById('dl-pdf-btn').disabled = false;
+      hasUpdated = false;
+      showingOriginal = false;
+      document.getElementById('view-toggle').style.display = 'none';
+      document.getElementById('compare-bar').classList.remove('visible');
+      await loadSVG(data.svg_url);
+    } catch(e) {
+      showStatus('upload-status', 'error', e.message);
+      document.getElementById('file-status').textContent = 'Failed';
+    }
+  }
+
+  async function loadSVG(url) {
+    const area = document.getElementById('viewer-area');
+    area.innerHTML = '';
+    const frame = document.createElement('iframe');
+    frame.id = 'svg-frame';
+    frame.src = url + '?t=' + Date.now();
+    frame.style.cssText = 'width:100%;height:100%;border:none;background:white;';
+    area.appendChild(frame);
+    scale = 1;
+    currentUrl = url;
+  }
+
+  async function applyChanges() {
+    const desc = document.getElementById('change-input').value.trim();
+    const apiKey = document.getElementById('api-key').value.trim();
+    if (!desc) { showStatus('change-status', 'error', 'Please describe the changes you want.'); return; }
+    if (!jobId) { showStatus('change-status', 'error', 'Please upload a plan first.'); return; }
+
+    document.getElementById('apply-btn').disabled = true;
+    showStatus('change-status', 'loading', '<span class="spinner"></span>AI is applying your changes...');
+
+    try {
+      const res = await fetch('/apply-changes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId, change_description: desc, api_key: apiKey })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to apply changes');
+
+      showStatus('change-status', 'success', 'Changes applied. Viewing updated plan.');
+      hasUpdated = true;
+      showingOriginal = false;
+      document.getElementById('view-toggle').style.display = 'inline-block';
+      document.getElementById('view-toggle').textContent = 'Show Original';
+      document.getElementById('compare-bar').classList.add('visible');
+      document.getElementById('compare-label').textContent = 'Updated plan';
+      await loadSVG(data.updated_svg_url);
+    } catch(e) {
+      showStatus('change-status', 'error', e.message);
+    } finally {
+      document.getElementById('apply-btn').disabled = false;
+    }
+  }
+
+  function toggleView() {
+    if (!hasUpdated || !jobId) return;
+    showingOriginal = !showingOriginal;
+    const btn = document.getElementById('view-toggle');
+    const label = document.getElementById('compare-label');
+    if (showingOriginal) {
+      btn.textContent = 'Show Updated';
+      label.textContent = 'Original plan';
+      loadSVG(`/file/${jobId}/extracted.svg`);
+    } else {
+      btn.textContent = 'Show Original';
+      label.textContent = 'Updated plan';
+      loadSVG(`/file/${jobId}/updated.svg`);
+    }
+  }
+
+  function downloadSVG() {
+    if (!jobId) return;
+    const url = hasUpdated && !showingOriginal
+      ? `/file/${jobId}/updated.svg`
+      : `/file/${jobId}/extracted.svg`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = hasUpdated ? 'updated_plan.svg' : 'extracted_plan.svg';
+    a.click();
+  }
+
+  function downloadPDF() {
+    window.print();
+  }
+
+  function zoom(factor) {
+    scale = Math.min(Math.max(scale * factor, 0.2), 5);
+    const c = document.getElementById('svg-container');
+    if (c) c.style.transform = `scale(${scale})`;
+  }
+
+  function resetZoom() {
+    scale = 1;
+    const c = document.getElementById('svg-container');
+    if (c) c.style.transform = 'scale(1)';
+  }
+
+  function showStatus(id, type, msg) {
+    const el = document.getElementById(id);
+    el.className = `status ${type}`;
+    el.innerHTML = msg;
+    el.style.display = 'block';
+  }
+</script>
+</body>
+</html>
