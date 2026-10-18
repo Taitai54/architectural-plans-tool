@@ -36,6 +36,8 @@ Python 3.10+ is the only requirement.
 ./run.sh          # installs backend/requirements.txt and serves http://localhost:8000
 ```
 
+On Windows, double-click `run.bat` instead. It installs the requirements, starts the server and opens the browser.
+
 The server binds to 127.0.0.1 only. Uploaded plans and extraction results are stored in `backend/outputs/` (git-ignored).
 
 ## OCR setup (room names and automatic scale)
