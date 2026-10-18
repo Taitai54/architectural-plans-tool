@@ -1,258 +1,203 @@
-import os, subprocess, uuid, shutil, base64, json, re
+import json
+import re
+import shutil
+import uuid
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+
+import pymupdf
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
-load_dotenv()
+import extract
 
+# Local-only tool: no CORS middleware (the frontend is served from the same origin),
+# and run.sh binds to 127.0.0.1.
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-OUTPUT_DIR = Path("outputs")
+OUTPUT_DIR = Path(__file__).parent / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+VIEW_ID_RE = re.compile(r"^v[0-9]{1,3}$")
+PT_TO_MM = 25.4 / 72.0
 
 
-# ── Upload PDF and extract SVG ────────────────────────────────────────────────
-@app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(".pdf"):
+@app.middleware("http")
+async def security_headers(request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
+
+
+def job_dir(job_id: str) -> Path:
+    if not JOB_ID_RE.match(job_id):
+        raise HTTPException(404, "Job not found")
+    d = (OUTPUT_DIR / job_id).resolve()
+    if not d.is_relative_to(OUTPUT_DIR.resolve()) or not d.is_dir():
+        raise HTTPException(404, "Job not found")
+    return d
+
+
+def read_json(path: Path):
+    return json.loads(path.read_text())
+
+
+def write_json(path: Path, data) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, separators=(",", ":")))
+    tmp.replace(path)
+
+
+# ── Upload and extract ────────────────────────────────────────────────────────
+@app.post("/api/upload")
+def upload_pdf(file: UploadFile = File(...)):
+    """Plain `def` so FastAPI runs the CPU-bound extraction in a threadpool."""
+    name = file.filename or "plan.pdf"
+    if not name.lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF files are supported")
 
-    job_id = str(uuid.uuid4())[:8]
-    job_dir = OUTPUT_DIR / job_id
-    job_dir.mkdir()
+    job_id = uuid.uuid4().hex
+    d = OUTPUT_DIR / job_id
+    d.mkdir()
+    try:
+        pdf_path = d / "original.pdf"
+        size = 0
+        with open(pdf_path, "wb") as f:
+            while chunk := file.file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(413, "PDF is larger than 50 MB")
+                f.write(chunk)
+        with open(pdf_path, "rb") as f:
+            if f.read(5) != b"%PDF-":
+                raise HTTPException(400, "That file is not a valid PDF")
 
-    pdf_path = job_dir / "original.pdf"
-    with open(pdf_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        try:
+            pages = extract.extract_pdf(str(pdf_path))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # corrupt PDFs surface as assorted pymupdf errors
+            raise HTTPException(400, f"Could not read PDF: {e}")
 
-    svg_path = job_dir / "extracted.svg"
-    result = subprocess.run(
-        ["pdf2svg", str(pdf_path), str(svg_path)],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0 or not svg_path.exists():
-        raise HTTPException(500, f"pdf2svg failed: {result.stderr}")
+        meta = {"job_id": job_id, "filename": name, "pages": []}
+        for i, pg in enumerate(pages):
+            write_json(d / f"page-{i + 1}.json", pg)
+            meta["pages"].append({
+                "page": i + 1, "kind": pg["kind"], "width": pg["width"], "height": pg["height"],
+                "views": {v["id"]: {"name": v["name"], "mm_per_pt": None, "ratio": None}
+                          for v in pg["views"]},
+            })
+        write_json(d / "meta.json", meta)
+    except BaseException:
+        shutil.rmtree(d, ignore_errors=True)
+        raise
+    return summary(meta, pages)
 
-    # High-res PNG for AI vision
-    subprocess.run(
-        ["pdftoppm", "-r", "200", "-png", "-singlefile", str(pdf_path), str(job_dir / "preview")],
-        capture_output=True
-    )
-    for candidate in [job_dir / "preview-1.png"]:
-        if candidate.exists():
-            candidate.rename(job_dir / "preview.png")
 
-    svg_text = svg_path.read_text()
-    vb = re.search(r'viewBox=["\']([^"\']+)["\']', svg_text)
-    w  = re.search(r'<svg[^>]+width=["\']([^"\']+)["\']', svg_text)
-    h  = re.search(r'<svg[^>]+height=["\']([^"\']+)["\']', svg_text)
-
+def summary(meta: dict, pages: list[dict]) -> dict:
     return {
-        "job_id": job_id,
-        "filename": file.filename,
-        "svg_url": f"/file/{job_id}/extracted.svg",
-        "preview_url": f"/file/{job_id}/preview.png",
-        "viewbox": vb.group(1) if vb else "0 0 842 1190",
-        "svg_width": w.group(1) if w else "842",
-        "svg_height": h.group(1) if h else "1190",
+        "job_id": meta["job_id"],
+        "filename": meta["filename"],
+        "pages": [
+            {"page": m["page"], "kind": m["kind"], "width": m["width"], "height": m["height"],
+             "paths": sum(pg["counts"].values()), "views": len(pg["views"])}
+            for m, pg in zip(meta["pages"], pages)
+        ],
     }
 
 
-# ── Serve files ───────────────────────────────────────────────────────────────
-@app.get("/file/{job_id}/{filename}")
-async def get_file(job_id: str, filename: str):
-    path = OUTPUT_DIR / job_id / filename
-    if not path.exists():
-        raise HTTPException(404, "File not found")
-    return FileResponse(path)
+# ── Read back ─────────────────────────────────────────────────────────────────
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str):
+    d = job_dir(job_id)
+    meta = read_json(d / "meta.json")
+    pages = [read_json(d / f"page-{m['page']}.json") for m in meta["pages"]]
+    return summary(meta, pages)
 
 
-# ── Apply AI changes — Vision + Overlay Patch ─────────────────────────────────
-class ChangeRequest(BaseModel):
-    job_id: str
-    change_description: str
-    api_key: str = ""
-    viewbox: str = "0 0 841.92 1190.52"
+@app.get("/api/jobs/{job_id}/pages/{page}")
+def get_page(job_id: str, page: int):
+    d = job_dir(job_id)
+    meta = read_json(d / "meta.json")
+    pm = next((m for m in meta["pages"] if m["page"] == page), None)
+    if pm is None:
+        raise HTTPException(404, "Page not found")
+    scene = read_json(d / f"page-{page}.json")
+    for v in scene["views"]:
+        saved = pm["views"].get(v["id"], {})
+        v["name"] = saved.get("name") or v["name"]
+        v["mm_per_pt"] = saved.get("mm_per_pt")
+        v["ratio"] = saved.get("ratio")
+    scene["categories"] = [{"id": k, "label": label} for k, label in extract.CATEGORIES]
+    return scene
 
 
-@app.post("/apply-changes")
-async def apply_changes(req: ChangeRequest):
-    job_dir = OUTPUT_DIR / req.job_id
-    svg_path = job_dir / "extracted.svg"
-    preview_path = job_dir / "preview.png"
+class ViewUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    # Real millimetres represented by one PDF point (from a two-point calibration)...
+    mm_per_pt: float | None = Field(default=None, gt=0, lt=100000)
+    # ...or the drawing scale "1:ratio" for a sheet printed at true size.
+    ratio: float | None = Field(default=None, gt=0, lt=100000)
 
-    if not svg_path.exists():
-        raise HTTPException(404, "SVG not found — upload a PDF first")
-    if not preview_path.exists():
-        raise HTTPException(404, "Preview image not found")
 
-    api_key = req.api_key or OPENAI_API_KEY
-    if not api_key:
-        raise HTTPException(400, "No OpenAI API key — add credit at platform.openai.com and paste your key in the sidebar")
+@app.put("/api/jobs/{job_id}/pages/{page}/views/{view_id}")
+def update_view(job_id: str, page: int, view_id: str, body: ViewUpdate):
+    d = job_dir(job_id)
+    if not VIEW_ID_RE.match(view_id):
+        raise HTTPException(404, "View not found")
+    meta = read_json(d / "meta.json")
+    pm = next((m for m in meta["pages"] if m["page"] == page), None)
+    if pm is None or view_id not in pm["views"]:
+        raise HTTPException(404, "View not found")
+    v = pm["views"][view_id]
+    if body.name is not None:
+        v["name"] = body.name.strip() or v["name"]
+    if body.ratio is not None:
+        v["ratio"] = body.ratio
+        v["mm_per_pt"] = PT_TO_MM * body.ratio
+    elif body.mm_per_pt is not None:
+        v["ratio"] = None
+        v["mm_per_pt"] = body.mm_per_pt
+    write_json(d / "meta.json", meta)
+    return v
 
-    with open(preview_path, "rb") as f:
-        img_b64 = base64.b64encode(f.read()).decode()
 
-    vb = req.viewbox
-    vb_parts = vb.split()
-    vb_w = vb_parts[2] if len(vb_parts) >= 4 else "841.92"
-    vb_h = vb_parts[3] if len(vb_parts) >= 4 else "1190.52"
+@app.get("/api/jobs/{job_id}/original.pdf")
+def get_original(job_id: str):
+    d = job_dir(job_id)
+    return FileResponse(d / "original.pdf", media_type="application/pdf",
+                        headers={"Content-Disposition": "attachment; filename=original.pdf"})
 
-    prompt = f"""You are an expert architectural SVG draughtsperson reviewing a floor plan.
 
-The SVG coordinate system: viewBox="{vb}" — origin (0,0) is TOP-LEFT, x increases right, y increases DOWN.
-Total drawing size: {vb_w} wide × {vb_h} tall (in points, 1pt ≈ 0.353mm).
-
-REQUESTED CHANGE:
-"{req.change_description}"
-
-Study the image carefully. Identify the exact pixel positions of the relevant walls, rooms and spaces,
-then map them to SVG coordinates (scale proportionally from the viewBox dimensions).
-
-Return ONLY a JSON object — no markdown, no code fences — with these exact keys:
-
-{{
-  "description": "Plain English summary of what was changed",
-  "remove_regions": [
-    {{"x": 0, "y": 0, "width": 0, "height": 0, "label": "what is removed"}}
-  ],
-  "add_svg": "<g id='proposed-changes' xmlns='http://www.w3.org/2000/svg'>...SVG elements...</g>"
-}}
-
-Styling rules — match the existing drawing exactly:
-- New proposed structure outline: stroke="#cc0000" stroke-width="2" fill="none"
-- New proposed area fill: diagonal red hatching using <pattern> with 45° lines, stroke="#cc0000" stroke-width="0.8", spacing 8pt
-- Demolished/removed walls: shown with stroke="#cc0000" stroke-width="1.5" stroke-dasharray="8,4" (the remove_regions white overlay erases the original)
-- New solid walls: stroke="#000000" stroke-width="2" fill="none"
-- Room labels: font-family="Arial,sans-serif" font-size="9" fill="#cc0000" text-anchor="middle" font-weight="bold"
-- Dimension lines: stroke="#000000" stroke-width="0.7" with short tick marks at ends
-- Dimension text: font-family="Arial,sans-serif" font-size="7" fill="#000000"
-- All coordinates must fall within: 0 0 {vb_w} {vb_h}"""
-
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key)
-
+@app.get("/api/jobs/{job_id}/pages/{page}/preview.png")
+def get_preview(job_id: str, page: int, dpi: int = 100):
+    """Raster of the page, used for scanned PDFs that have no vector content."""
+    d = job_dir(job_id)
+    dpi = max(30, min(dpi, 200))
+    doc = pymupdf.open(d / "original.pdf")
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}", "detail": "high"}},
-                    {"type": "text", "text": prompt}
-                ]
-            }],
-            max_tokens=4000
-        )
-    except Exception as e:
-        err = str(e)
-        if "insufficient_quota" in err or "429" in err:
-            raise HTTPException(402, "OpenAI quota exceeded — add credit at platform.openai.com/account/billing")
-        raise HTTPException(500, f"AI error: {err}")
-
-    raw = response.choices[0].message.content.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-
-    try:
-        patch = json.loads(raw)
-    except json.JSONDecodeError:
-        m = re.search(r'\{.*\}', raw, re.DOTALL)
-        if m:
-            patch = json.loads(m.group())
-        else:
-            raise HTTPException(500, f"AI returned unparseable response: {raw[:400]}")
-
-    svg_text = svg_path.read_text()
-
-    removal_svg = ""
-    for r in patch.get("remove_regions", []):
-        x, y, rw, rh = r.get("x",0), r.get("y",0), r.get("width",0), r.get("height",0)
-        if rw > 0 and rh > 0:
-            removal_svg += f'<rect x="{x}" y="{y}" width="{rw}" height="{rh}" fill="white" stroke="none"/>\n'
-            cx, cy = x + rw/2, y + rh/2
-            removal_svg += f'<line x1="{x}" y1="{cy}" x2="{x+rw}" y2="{cy}" stroke="#cc0000" stroke-width="1.5" stroke-dasharray="8,4"/>\n'
-
-    add_svg  = patch.get("add_svg", "")
-    desc     = patch.get("description", "Changes applied")
-    patch_block = f'\n<!-- AI PATCH: {desc} -->\n{removal_svg}\n{add_svg}\n'
-    updated_svg = svg_text.rsplit("</svg>", 1)[0] + patch_block + "</svg>"
-
-    (job_dir / "updated.svg").write_text(updated_svg)
-    (job_dir / "patch.json").write_text(json.dumps(patch, indent=2))
-
-    return {
-        "job_id": req.job_id,
-        "updated_svg_url": f"/file/{req.job_id}/updated.svg",
-        "description": desc,
-    }
+        if not 1 <= page <= doc.page_count:
+            raise HTTPException(404, "Page not found")
+        pg = doc[page - 1]
+        pg.set_rotation(0)  # same frame as the extracted geometry
+        png = pg.get_pixmap(dpi=dpi).tobytes("png")
+    finally:
+        doc.close()
+    return Response(png, media_type="image/png")
 
 
-# ── Health check ──────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
-    return {"status": "ok", "pdf2svg": shutil.which("pdf2svg") is not None}
+    return {"status": "ok", "pymupdf": pymupdf.__version__}
 
 
-# ── Demo patch (no API key needed) ────────────────────────────────────────────
-class DemoRequest(BaseModel):
-    job_id: str
-
-@app.post("/demo-patch")
-async def demo_patch(req: DemoRequest):
-    job_dir = OUTPUT_DIR / req.job_id
-    svg_path = job_dir / "extracted.svg"
-    if not svg_path.exists():
-        raise HTTPException(404, "SVG not found — upload a PDF first")
-
-    svg_text = svg_path.read_text()
-    vb = re.search(r'viewBox=["\']([^"\']+)["\']', svg_text)
-    vb_parts = (vb.group(1) if vb else "0 0 841.92 1190.52").split()
-    vb_w, vb_h = float(vb_parts[2]), float(vb_parts[3])
-
-    cx = vb_w * 0.50
-    cy = vb_h * 0.68
-    rw, rh = vb_w * 0.22, vb_h * 0.10
-
-    hatch_id = "demo-red-hatch"
-    add_svg = f"""<defs>
-  <pattern id="{hatch_id}" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
-    <line x1="0" y1="0" x2="0" y2="8" stroke="#cc0000" stroke-width="0.8"/>
-  </pattern>
-</defs>
-<g id="proposed-changes-demo">
-  <rect x="{cx - rw/2:.2f}" y="{cy - rh/2:.2f}" width="{rw:.2f}" height="{rh:.2f}"
-        fill="url(#{hatch_id})" stroke="#cc0000" stroke-width="2"/>
-  <text x="{cx:.2f}" y="{cy - 6:.2f}" font-family="Arial,sans-serif" font-size="9"
-        text-anchor="middle" fill="#cc0000" font-weight="bold">PROPOSED</text>
-  <text x="{cx:.2f}" y="{cy + 6:.2f}" font-family="Arial,sans-serif" font-size="9"
-        text-anchor="middle" fill="#cc0000" font-weight="bold">GARDEN ROOM EXTENSION</text>
-  <line x1="{cx - rw/2 - 15:.2f}" y1="{cy - rh/2:.2f}" x2="{cx + rw/2 + 15:.2f}" y2="{cy - rh/2:.2f}"
-        stroke="#000000" stroke-width="0.7"/>
-  <line x1="{cx - rw/2 - 15:.2f}" y1="{cy + rh/2:.2f}" x2="{cx + rw/2 + 15:.2f}" y2="{cy + rh/2:.2f}"
-        stroke="#000000" stroke-width="0.7"/>
-  <text x="{cx:.2f}" y="{cy + rh/2 + 12:.2f}" font-family="Arial,sans-serif" font-size="7"
-        text-anchor="middle" fill="#000000">{rw * 0.353 / 1000:.1f}m</text>
-</g>"""
-
-    desc = "Demo: proposed garden room extension overlay"
-    patch_block = f'\n<!-- AI PATCH: {desc} -->\n\n{add_svg}\n'
-    updated_svg = svg_text.rsplit("</svg>", 1)[0] + patch_block + "</svg>"
-
-    (job_dir / "updated.svg").write_text(updated_svg)
-
-    return {
-        "job_id": req.job_id,
-        "updated_svg_url": f"/file/{req.job_id}/updated.svg",
-        "description": desc,
-    }
+@app.exception_handler(HTTPException)
+async def http_error(request, exc: HTTPException):
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 
 # ── Serve frontend ────────────────────────────────────────────────────────────

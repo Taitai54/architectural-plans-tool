@@ -8,78 +8,70 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; height: 100vh; display: flex; flex-direction: column; }
 
-  header { background: #1a1a2e; color: white; padding: 14px 24px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  header { background: #1a1a2e; color: white; padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
   header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
   header span { font-size: 12px; color: #8888aa; }
 
   .main { display: flex; flex: 1; overflow: hidden; }
 
-  /* ── Sidebar ── */
-  .sidebar { width: 320px; flex-shrink: 0; background: white; border-right: 1px solid #e0e0e8; display: flex; flex-direction: column; overflow-y: auto; }
+  .sidebar { width: 320px; flex-shrink: 0; background: white; border-right: 1px solid #e0e0e8; overflow-y: auto; }
+  .sec { padding: 16px 18px; border-bottom: 1px solid #f0f0f5; }
+  .sec h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #666; margin-bottom: 10px; }
+  .sec[hidden] { display: none; }
 
-  .sidebar-section { padding: 20px; border-bottom: 1px solid #f0f0f5; }
-  .sidebar-section h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #666; margin-bottom: 12px; }
-
-  /* Upload zone */
-  .upload-zone { border: 2px dashed #c0c0d0; border-radius: 8px; padding: 28px 16px; text-align: center; cursor: pointer; transition: all 0.2s; background: #fafafa; }
+  .upload-zone { border: 2px dashed #c0c0d0; border-radius: 8px; padding: 20px 12px; text-align: center; cursor: pointer; background: #fafafa; font-size: 13px; color: #666; }
   .upload-zone:hover, .upload-zone.drag-over { border-color: #1a1a2e; background: #f0f0f8; }
-  .upload-zone svg { margin-bottom: 10px; opacity: 0.4; }
-  .upload-zone p { font-size: 13px; color: #666; }
   .upload-zone strong { color: #1a1a2e; }
   #file-input { display: none; }
 
-  /* File info */
-  .file-info { background: #f0f4ff; border-radius: 6px; padding: 10px 12px; font-size: 12px; color: #333; display: none; }
-  .file-info strong { display: block; margin-bottom: 2px; font-size: 13px; }
-
-  /* API key */
-  .input-row { display: flex; flex-direction: column; gap: 6px; }
-  .input-row label { font-size: 12px; color: #555; font-weight: 500; }
-  .input-row input, .input-row textarea { border: 1px solid #d0d0dc; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; outline: none; transition: border 0.2s; }
-  .input-row input:focus, .input-row textarea:focus { border-color: #1a1a2e; }
-  .input-row textarea { resize: vertical; min-height: 90px; }
-
-  /* Buttons */
-  .btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-  .btn-primary { background: #1a1a2e; color: white; }
-  .btn-primary:hover { background: #2d2d4e; }
-  .btn-primary:disabled { background: #999; cursor: not-allowed; }
-  .btn-success { background: #cc0000; color: white; margin-top: 8px; }
-  .btn-success:hover { background: #aa0000; }
-  .btn-success:disabled { background: #999; cursor: not-allowed; }
-  .btn-outline { background: white; color: #1a1a2e; border: 1px solid #1a1a2e; margin-top: 6px; }
-  .btn-outline:hover { background: #f0f0f8; }
-
-  /* Status */
   .status { font-size: 12px; padding: 8px 10px; border-radius: 6px; margin-top: 8px; display: none; }
-  .status.loading { background: #fff8e6; color: #8a6000; }
-  .status.error { background: #fff0f0; color: #cc0000; }
-  .status.success { background: #f0fff4; color: #006622; }
+  .status.loading { background: #fff8e6; color: #8a6000; display: block; }
+  .status.error { background: #fff0f0; color: #cc0000; display: block; }
+  .status.success { background: #f0fff4; color: #006622; display: block; }
 
-  /* ── Viewer ── */
-  .viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+  .row label { flex: 1; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  .row .count { font-size: 11px; color: #999; }
+  .row input[type=text], .row input[type=number], .field { border: 1px solid #d0d0dc; border-radius: 5px; padding: 5px 7px; font-size: 13px; font-family: inherit; min-width: 0; }
+  .row input[type=text] { flex: 1; }
+  .row.active { background: #f0f4ff; border-radius: 6px; padding: 3px 6px; margin: 0 -6px; }
+  .hint { font-size: 11px; color: #888; line-height: 1.45; margin-top: 6px; }
+  .tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #eee; color: #555; white-space: nowrap; }
+  .tag.ok { background: #e3f6e8; color: #17692e; }
+  .tag.warn { background: #fff3d6; color: #8a6000; }
 
-  .viewer-toolbar { background: white; border-bottom: 1px solid #e0e0e8; padding: 10px 16px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-  .viewer-toolbar span { font-size: 12px; color: #666; margin-right: auto; }
-  .tool-btn { background: #f0f0f8; border: 1px solid #d0d0dc; border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
-  .tool-btn:hover { background: #e0e0ee; }
-  .tool-btn.active { background: #1a1a2e; color: white; border-color: #1a1a2e; }
+  .btn { padding: 7px 10px; border: 1px solid #1a1a2e; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; background: white; color: #1a1a2e; }
+  .btn:hover { background: #f0f0f8; }
+  .btn.primary { background: #1a1a2e; color: white; }
+  .btn.on { background: #cc0000; border-color: #cc0000; color: white; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .mini { border: none; background: none; cursor: pointer; font-size: 14px; color: #888; padding: 0 3px; }
+  .mini:hover { color: #cc0000; }
 
-  .viewer-area { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 24px; }
+  .viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+  .toolbar { background: white; border-bottom: 1px solid #e0e0e8; padding: 8px 14px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .toolbar .label { font-size: 12px; color: #666; margin-right: auto; }
+  .banner { display: none; background: #fff8e6; border-bottom: 1px solid #f0d080; padding: 7px 14px; font-size: 12px; color: #8a6000; }
+  .banner.visible { display: block; }
 
-  .svg-container { background: white; box-shadow: 0 2px 16px rgba(0,0,0,0.12); transform-origin: top center; transition: transform 0.2s; }
-  .svg-container svg { display: block; max-width: 100%; }
-
-  .placeholder { text-align: center; padding: 80px 40px; color: #999; }
-  .placeholder svg { margin-bottom: 16px; opacity: 0.3; }
-  .placeholder h3 { font-size: 16px; margin-bottom: 8px; color: #666; }
+  #stage { flex: 1; position: relative; background: #fff; overflow: hidden; touch-action: none; }
+  #stage.measuring { cursor: crosshair; }
+  #stage svg { width: 100%; height: 100%; display: block; user-select: none; }
+  .placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #999; text-align: center; padding: 40px; pointer-events: none; }
+  .placeholder h3 { font-size: 16px; color: #666; margin-bottom: 6px; }
   .placeholder p { font-size: 13px; line-height: 1.6; }
 
-  /* Compare toggle */
-  .compare-bar { display: none; background: #fff8e6; border-bottom: 1px solid #f0d080; padding: 8px 16px; font-size: 12px; color: #8a6000; align-items: center; gap: 10px; flex-shrink: 0; }
-  .compare-bar.visible { display: flex; }
-
-  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; }
+  /* Line weights are screen pixels (non-scaling) so hairlines stay visible at any zoom. */
+  #world path { vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+  #world .c-structure { stroke-width: var(--sw-structure, 1.6px); }
+  #world .c-detail { stroke-width: var(--sw-detail, 1px); }
+  #world .c-fine, #world .c-hatch { stroke-width: var(--sw-fine, 0.6px); }
+  #world .c-dashed { stroke-width: var(--sw-detail, 1px); }
+  #world .c-fills, #world .c-text { stroke: none; }
+  #world .note { fill: #1d4ed8; font-family: Arial, sans-serif; pointer-events: none; }
+  #hud { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: #444; background: rgba(255,255,255,.9); padding: 4px 8px; border-radius: 5px; border: 1px solid #e0e0e8; display: none; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: -2px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
@@ -88,231 +80,485 @@
 <header>
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>
   <h1>Architectural Plans Tool</h1>
-  <span>Upload · View · Modify · Export</span>
+  <span>Upload · Declutter · Measure</span>
 </header>
 
 <div class="main">
-
-  <!-- ── SIDEBAR ── -->
   <div class="sidebar">
 
-    <div class="sidebar-section">
-      <h2>1 · Upload Plan</h2>
-      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <p><strong>Click to upload</strong> or drag & drop<br>PDF architectural plan</p>
+    <div class="sec">
+      <h2>1 · Upload plan</h2>
+      <div class="upload-zone" id="upload-zone">
+        <strong>Click to upload</strong> or drag &amp; drop<br>PDF architectural plan
       </div>
-      <input type="file" id="file-input" accept=".pdf">
-      <div class="file-info" id="file-info">
-        <strong id="file-name"></strong>
-        <span id="file-status"></span>
-      </div>
+      <input type="file" id="file-input" accept=".pdf,application/pdf">
       <div class="status" id="upload-status"></div>
     </div>
 
-    <div class="sidebar-section">
-      <h2>2 · API Key (for AI changes)</h2>
-      <div class="input-row">
-        <label>OpenAI API Key</label>
-        <input type="password" id="api-key" placeholder="sk-proj-..." autocomplete="off">
-        <span style="font-size:11px;color:#999;margin-top:2px">Only used locally. Never stored on a server.</span>
+    <div class="sec" id="sec-pages" hidden>
+      <h2>Page</h2>
+      <div class="row"><select class="field" id="page-select" style="flex:1"></select></div>
+    </div>
+
+    <div class="sec" id="sec-views" hidden>
+      <h2>2 · Drawings on this sheet</h2>
+      <div id="views"></div>
+      <div class="hint">Each drawing has its own scale. Select one to set its scale below.</div>
+    </div>
+
+    <div class="sec" id="sec-layers" hidden>
+      <h2>3 · Declutter</h2>
+      <div class="btns" style="margin:0 0 8px"><button class="btn" id="preset-clean">Clean</button><button class="btn" id="preset-all">Everything</button></div>
+      <div id="layers"></div>
+    </div>
+
+    <div class="sec" id="sec-scale" hidden>
+      <h2>4 · Scale &amp; measure</h2>
+      <div class="row"><span>Active drawing:</span><strong id="active-name"></strong><span class="tag" id="active-tag"></span></div>
+      <div class="row">Sheet scale 1 : <input class="field" type="number" id="ratio" min="1" step="1" placeholder="50" style="width:70px"><button class="btn" id="apply-ratio">Set</button></div>
+      <div class="hint" id="paper-hint"></div>
+      <div class="btns">
+        <button class="btn" id="btn-measure">Measure (M)</button>
+        <button class="btn" id="btn-calibrate">Calibrate with known length (C)</button>
       </div>
-    </div>
-
-    <div class="sidebar-section">
-      <h2>3 · Describe Changes</h2>
-      <div class="input-row">
-        <label>What would you like to change?</label>
-        <textarea id="change-input" placeholder="e.g. Add a single-storey extension of 3m x 4m to the rear of the kitchen. Show it with red hatching as proposed new works."></textarea>
+      <div id="calib-form" hidden>
+        <div class="row" style="margin-top:8px">Real length <input class="field" type="number" id="calib-len" min="0" step="any" style="width:90px"> mm <button class="btn primary" id="calib-apply">Apply</button></div>
       </div>
-      <button class="btn btn-success" id="apply-btn" disabled onclick="applyChanges()">Apply Changes with AI</button>
-      <div class="status" id="change-status"></div>
+      <div class="hint" id="mode-hint">Measure: click two points (they snap to line ends and corners). Calibrate: click the two ends of something you know the size of, such as the scale bar or a dimensioned wall.</div>
+      <div id="measures" style="margin-top:8px"></div>
     </div>
 
-    <div class="sidebar-section">
-      <h2>4 · Export</h2>
-      <button class="btn btn-outline" id="dl-svg-btn" disabled onclick="downloadSVG()">Download SVG</button>
-      <button class="btn btn-outline" id="dl-pdf-btn" disabled onclick="downloadPDF()">Print / Save as PDF</button>
+    <div class="sec" id="sec-export" hidden>
+      <h2>5 · Export</h2>
+      <div class="btns" style="margin-top:0"><button class="btn" id="dl-svg">Download clean SVG</button><button class="btn" id="dl-pdf">Original PDF</button></div>
     </div>
-
   </div>
 
-  <!-- ── VIEWER ── -->
   <div class="viewer">
-
-    <div class="viewer-toolbar">
-      <span id="viewer-label">No plan loaded</span>
-      <button class="tool-btn" onclick="zoom(1.2)">＋ Zoom In</button>
-      <button class="tool-btn" onclick="zoom(0.8)">－ Zoom Out</button>
-      <button class="tool-btn" onclick="resetZoom()">Fit</button>
-      <button class="tool-btn active" id="view-toggle" onclick="toggleView()" style="display:none">Show Original</button>
+    <div class="toolbar">
+      <span class="label" id="viewer-label">No plan loaded</span>
+      <button class="btn" id="zoom-in">＋</button>
+      <button class="btn" id="zoom-out">－</button>
+      <button class="btn" id="fit">Fit (F)</button>
     </div>
-
-    <div class="compare-bar" id="compare-bar">
-      Viewing: <strong id="compare-label">Updated plan</strong> — toggle above to compare with original
+    <div class="banner" id="banner"></div>
+    <div id="stage">
+      <div class="placeholder" id="placeholder"><h3>No plan loaded</h3><p>Upload a vector PDF plan on the left.<br>It is converted into classified geometry you can declutter and measure.</p></div>
+      <svg id="svg" xmlns="http://www.w3.org/2000/svg" style="display:none"><g id="world"></g><g id="overlay"></g></svg>
+      <div id="hud"></div>
     </div>
-
-    <div class="viewer-area" id="viewer-area">
-      <div class="placeholder">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>
-        <h3>No plan loaded</h3>
-        <p>Upload a PDF architectural plan using the panel on the left.<br>The exact vector drawing will be extracted and displayed here.</p>
-      </div>
-    </div>
-
   </div>
 </div>
 
 <script>
-  let jobId = null;
-  let scale = 1;
-  let showingOriginal = false;
-  let hasUpdated = false;
+const SVGNS = 'http://www.w3.org/2000/svg';
+const PT_TO_MM = 25.4 / 72;
+const CAT_ORDER = ['fills', 'fine', 'hatch', 'dashed', 'detail', 'structure', 'text'];
+const CLEAN = { structure: 1, detail: 1, fills: 1, dashed: 1, hatch: 1, fine: 0, text: 0 };
 
-  const uploadZone = document.getElementById('upload-zone');
-  const fileInput  = document.getElementById('file-input');
+const $ = id => document.getElementById(id);
+const stage = $('stage'), svg = $('svg'), world = $('world'), overlay = $('overlay');
 
-  // Drag and drop
-  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
-  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
-  uploadZone.addEventListener('drop', e => {
-    e.preventDefault();
-    uploadZone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+const st = {
+  jobId: null, filename: '', pages: [], page: 1, scene: null,
+  view: { k: 1, tx: 0, ty: 0 },
+  catOn: {}, viewOn: {}, notesOn: true, activeView: null,
+  mode: null,            // null | 'measure' | 'calibrate'
+  pending: [],           // points picked in the current mode
+  measures: [],          // { a, b, view }
+  calib: null,           // { a, b, view } awaiting a real length
+  snapGrid: null, hover: null,
+};
+
+// ── helpers ────────────────────────────────────────────────────────────────
+function el(name, attrs = {}, text) {
+  const e = document.createElementNS(SVGNS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+}
+function status(id, type, msg, spin) {
+  const s = $(id);
+  s.className = 'status ' + type;
+  s.textContent = '';
+  if (spin) { const sp = document.createElement('span'); sp.className = 'spinner'; s.appendChild(sp); }
+  s.appendChild(document.createTextNode(msg));
+}
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  let data = null;
+  try { data = await res.json(); } catch (_) {}
+  if (!res.ok) throw new Error((data && data.detail) || `Request failed (${res.status})`);
+  return data;
+}
+function paperName(wPt, hPt) {
+  const w = wPt * PT_TO_MM, h = hPt * PT_TO_MM, lo = Math.min(w, h), hi = Math.max(w, h);
+  const sizes = { A0: [841, 1189], A1: [594, 841], A2: [420, 594], A3: [297, 420], A4: [210, 297] };
+  for (const n in sizes) if (Math.abs(lo - sizes[n][0]) < 4 && Math.abs(hi - sizes[n][1]) < 4) return n;
+  return null;
+}
+const viewData = id => st.scene && st.scene.views.find(v => v.id === id);
+function viewAt(x, y) {
+  const vs = (st.scene && st.scene.views) || [];
+  let best = null, bd = Infinity;
+  for (const v of vs) {
+    const [x0, y0, x1, y1] = v.bbox;
+    const d = Math.hypot(Math.max(x0 - x, 0, x - x1), Math.max(y0 - y, 0, y - y1));
+    if (d < bd) { bd = d; best = v; }
+  }
+  return best;
+}
+function fmtLen(mm) {
+  const r = Math.round(mm);
+  return r >= 1000 ? `${(mm / 1000).toFixed(2)} m (${r.toLocaleString()} mm)` : `${r.toLocaleString()} mm`;
+}
+function lengthLabel(a, b, v) {
+  const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+  if (v && v.mm_per_pt) return fmtLen(d * v.mm_per_pt);
+  return `${(d * PT_TO_MM).toFixed(1)} paper mm — set scale`;
+}
+
+// ── upload ─────────────────────────────────────────────────────────────────
+const zone = $('upload-zone'), fileInput = $('file-input');
+zone.onclick = () => fileInput.click();
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]); });
+fileInput.onchange = () => { if (fileInput.files[0]) upload(fileInput.files[0]); fileInput.value = ''; };
+
+async function upload(file) {
+  if (!file.name.toLowerCase().endsWith('.pdf')) return status('upload-status', 'error', 'Please upload a PDF file.');
+  status('upload-status', 'loading', 'Extracting geometry from PDF…', true);
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const data = await api('/api/upload', { method: 'POST', body: form });
+    st.jobId = data.job_id; st.filename = data.filename; st.pages = data.pages;
+    const sel = $('page-select');
+    sel.textContent = '';
+    for (const p of data.pages) {
+      const o = document.createElement('option');
+      o.value = p.page;
+      o.textContent = `Page ${p.page} — ${p.paths.toLocaleString()} paths, ${p.views} drawing${p.views === 1 ? '' : 's'}${p.kind === 'scan' ? ' (scan)' : ''}`;
+      sel.appendChild(o);
+    }
+    $('sec-pages').hidden = data.pages.length < 2;
+    status('upload-status', 'success', `Loaded ${data.filename}`);
+    await loadPage(1);
+  } catch (e) { status('upload-status', 'error', e.message); }
+}
+$('page-select').onchange = e => loadPage(+e.target.value);
+
+async function loadPage(n) {
+  st.page = n;
+  st.scene = await api(`/api/jobs/${st.jobId}/pages/${n}`);
+  st.measures = []; st.pending = []; st.calib = null; setMode(null);
+  st.catOn = { ...CLEAN, text: 0 };
+  st.viewOn = {};
+  for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock';
+  st.activeView = (st.scene.views.find(v => v.kind === 'drawing') || st.scene.views[0] || {}).id || null;
+  st.notesOn = true;
+  buildSnapGrid();
+  renderScene();
+  renderSidebar();
+  fit();
+  $('viewer-label').textContent = `${st.filename} · page ${n}`;
+  const b = $('banner');
+  if (st.scene.kind === 'scan') {
+    b.textContent = 'This page is a scan (no vector data). Showing a raster preview; you can still calibrate and measure. Automatic extraction for scans is planned.';
+    b.classList.add('visible');
+  } else b.classList.remove('visible');
+}
+
+// ── scene rendering ────────────────────────────────────────────────────────
+function renderScene() {
+  const sc = st.scene;
+  world.textContent = '';
+  $('placeholder').style.display = 'none';
+  svg.style.display = 'block';
+  if (sc.kind === 'scan') {
+    const im = el('image', { x: 0, y: 0, width: sc.width, height: sc.height, href: `/api/jobs/${st.jobId}/pages/${st.page}/preview.png?dpi=100` });
+    world.appendChild(im);
+  }
+  const groups = {};
+  for (const c of CAT_ORDER) {
+    const g = el('g', { id: 'cat-' + c });
+    groups[c] = g; world.appendChild(g);
+  }
+  for (const p of sc.paths) {
+    const e = el('path', { d: p.d });
+    e.setAttribute('class', `c-${p.cat}` + (p.v ? ` v-${p.v}` : ''));
+    if (p.s) e.setAttribute('stroke', p.s);
+    if (p.f) { e.setAttribute('fill', p.f); if (p.eo) e.setAttribute('fill-rule', 'evenodd'); } else e.setAttribute('fill', 'none');
+    if (p.da) e.setAttribute('stroke-dasharray', p.da.join(' '));
+    groups[p.cat].appendChild(e);
+  }
+  const notes = el('g', { id: 'notes' });
+  for (const t of sc.texts) {
+    notes.appendChild(el('text', { x: t.x, y: t.y, 'font-size': t.size, class: 'note' }, t.text));
+  }
+  world.appendChild(notes);
+  applyVisibility();
+  renderOverlay();
+}
+
+let viewStyle = null;
+function applyVisibility() {
+  for (const c of CAT_ORDER) {
+    const g = $('cat-' + c);
+    if (g) g.style.display = st.catOn[c] ? '' : 'none';
+  }
+  const n = $('notes'); if (n) n.style.display = st.notesOn ? '' : 'none';
+  if (!viewStyle) { viewStyle = document.createElement('style'); document.head.appendChild(viewStyle); }
+  viewStyle.textContent = Object.keys(st.viewOn).filter(id => !st.viewOn[id]).map(id => `#world .v-${id}{display:none}`).join('');
+}
+
+// ── sidebar ────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const sc = st.scene;
+  for (const id of ['sec-views', 'sec-layers', 'sec-scale', 'sec-export']) $(id).hidden = false;
+  $('sec-views').hidden = sc.views.length === 0;
+
+  const vwrap = $('views'); vwrap.textContent = '';
+  for (const v of sc.views) {
+    const row = document.createElement('div');
+    row.className = 'row' + (v.id === st.activeView ? ' active' : '');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!st.viewOn[v.id];
+    cb.title = 'Show / hide';
+    cb.onchange = () => { st.viewOn[v.id] = cb.checked; applyVisibility(); };
+    const name = document.createElement('input'); name.type = 'text'; name.value = v.name; name.maxLength = 80;
+    name.onchange = async () => {
+      try { await api(`/api/jobs/${st.jobId}/pages/${st.page}/views/${v.id}`, jsonPut({ name: name.value })); v.name = name.value.trim() || v.name; renderSidebar(); }
+      catch (e) { status('upload-status', 'error', e.message); }
+    };
+    const tag = document.createElement('span'); tag.className = 'tag ' + (v.mm_per_pt ? 'ok' : 'warn');
+    tag.textContent = v.ratio ? `1:${v.ratio}` : v.mm_per_pt ? 'calibrated' : 'no scale';
+    const sel = document.createElement('button'); sel.className = 'mini'; sel.textContent = '◎'; sel.title = 'Make active (scale target)';
+    sel.onclick = () => { st.activeView = v.id; renderSidebar(); };
+    const zoom = document.createElement('button'); zoom.className = 'mini'; zoom.textContent = '⤢'; zoom.title = 'Zoom to this drawing';
+    zoom.onclick = () => { st.activeView = v.id; fitBox(v.bbox); renderSidebar(); };
+    row.append(cb, name, tag, sel, zoom);
+    vwrap.appendChild(row);
+  }
+
+  const lwrap = $('layers'); lwrap.textContent = '';
+  const addLayer = (label, count, on, set) => {
+    const row = document.createElement('div'); row.className = 'row';
+    const lab = document.createElement('label');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = on;
+    cb.onchange = () => { set(cb.checked); applyVisibility(); };
+    lab.append(cb, document.createTextNode(label));
+    const c = document.createElement('span'); c.className = 'count'; c.textContent = count.toLocaleString();
+    row.append(lab, c); lwrap.appendChild(row);
+  };
+  for (const cat of sc.categories) addLayer(cat.label, sc.counts[cat.id] || 0, !!st.catOn[cat.id], v => { st.catOn[cat.id] = v ? 1 : 0; });
+  addLayer('Live text / notes', sc.texts.length, st.notesOn, v => { st.notesOn = v; });
+
+  const av = viewData(st.activeView);
+  $('active-name').textContent = av ? av.name : 'whole page';
+  const tag = $('active-tag');
+  tag.className = 'tag ' + (av && av.mm_per_pt ? 'ok' : 'warn');
+  tag.textContent = !av ? 'n/a' : av.ratio ? `1:${av.ratio}` : av.mm_per_pt ? 'calibrated' : 'no scale';
+  $('ratio').value = av && av.ratio ? av.ratio : '';
+  const paper = paperName(sc.width, sc.height);
+  $('paper-hint').textContent = `Page is ${Math.round(sc.width * PT_TO_MM)} × ${Math.round(sc.height * PT_TO_MM)} mm${paper ? ' (' + paper + ')' : ''}. Entering a ratio is only right if the PDF was printed at full size (e.g. "1:50 @ A1" on an A1 page). Otherwise calibrate.`;
+  renderMeasures();
+}
+const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+$('preset-clean').onclick = () => { st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
+$('preset-all').onclick = () => { for (const c of CAT_ORDER) st.catOn[c] = 1; for (const v of st.scene.views) st.viewOn[v.id] = true; applyVisibility(); renderSidebar(); };
+
+async function saveScale(body) {
+  const av = viewData(st.activeView);
+  if (!av) return status('upload-status', 'error', 'No drawing selected.');
+  try {
+    const r = await api(`/api/jobs/${st.jobId}/pages/${st.page}/views/${av.id}`, jsonPut(body));
+    av.mm_per_pt = r.mm_per_pt; av.ratio = r.ratio;
+    renderSidebar(); renderOverlay();
+  } catch (e) { status('upload-status', 'error', e.message); }
+}
+$('apply-ratio').onclick = () => { const r = parseFloat($('ratio').value); if (r > 0) saveScale({ ratio: r }); };
+
+// ── measuring ──────────────────────────────────────────────────────────────
+function setMode(m) {
+  st.mode = m; st.pending = []; st.hover = null;
+  if (m !== 'calibrate') { st.calib = null; $('calib-form').hidden = true; }
+  stage.classList.toggle('measuring', !!m);
+  $('btn-measure').classList.toggle('on', m === 'measure');
+  $('btn-calibrate').classList.toggle('on', m === 'calibrate');
+  $('mode-hint').textContent = m === 'measure' ? 'Click the first point, then the second. Esc to stop.'
+    : m === 'calibrate' ? 'Click both ends of a feature of known length. Esc to cancel.'
+    : 'Measure: click two points (they snap to line ends and corners). Calibrate: click the two ends of something you know the size of, such as the scale bar or a dimensioned wall.';
+  renderOverlay();
+}
+$('btn-measure').onclick = () => setMode(st.mode === 'measure' ? null : 'measure');
+$('btn-calibrate').onclick = () => setMode(st.mode === 'calibrate' ? null : 'calibrate');
+$('calib-apply').onclick = async () => {
+  const len = parseFloat($('calib-len').value);
+  if (!st.calib || !(len > 0)) return;
+  const d = Math.hypot(st.calib.a[0] - st.calib.b[0], st.calib.a[1] - st.calib.b[1]);
+  if (d < 0.5) return;
+  const target = st.calib.view;
+  if (target) st.activeView = target.id;
+  await saveScale({ mm_per_pt: len / d });
+  setMode(null);
+};
+
+function buildSnapGrid() {
+  const C = 20, grid = new Map(), s = st.scene.snaps;
+  for (let i = 0; i < s.length; i += 2) {
+    const key = Math.floor(s[i] / C) + ',' + Math.floor(s[i + 1] / C);
+    let a = grid.get(key); if (!a) grid.set(key, a = []);
+    a.push(i);
+  }
+  st.snapGrid = { C, grid };
+}
+function snap(x, y) {
+  const r = Math.min(10 / st.view.k, 40), { C, grid } = st.snapGrid, s = st.scene.snaps;
+  let best = null, bd = r * r;
+  for (let cx = Math.floor((x - r) / C); cx <= Math.floor((x + r) / C); cx++)
+    for (let cy = Math.floor((y - r) / C); cy <= Math.floor((y + r) / C); cy++) {
+      const a = grid.get(cx + ',' + cy); if (!a) continue;
+      for (const i of a) { const d = (s[i] - x) ** 2 + (s[i + 1] - y) ** 2; if (d < bd) { bd = d; best = [s[i], s[i + 1]]; } }
+    }
+  return best ? { p: best, snapped: true } : { p: [x, y], snapped: false };
+}
+
+function renderOverlay() {
+  overlay.textContent = '';
+  const k = st.view.k, fs = 12 / k;
+  const draw = (a, b, color, label) => {
+    overlay.appendChild(el('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: color, 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
+    for (const p of [a, b]) overlay.appendChild(el('circle', { cx: p[0], cy: p[1], r: 3.5 / k, fill: color }));
+    if (label) {
+      const t = el('text', { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 - 6 / k, 'font-size': fs, 'text-anchor': 'middle', fill: color, 'font-family': 'Arial,sans-serif', 'font-weight': 700, stroke: '#fff', 'stroke-width': 3 / k, 'paint-order': 'stroke' }, label);
+      overlay.appendChild(t);
+    }
+  };
+  for (const m of st.measures) draw(m.a, m.b, '#cc0000', lengthLabel(m.a, m.b, m.view));
+  if (st.calib) draw(st.calib.a, st.calib.b, '#0a7d3b', 'calibration line');
+  if (st.pending.length === 1) {
+    const a = st.pending[0], b = st.hover;
+    overlay.appendChild(el('circle', { cx: a[0], cy: a[1], r: 4 / k, fill: '#cc0000' }));
+    if (b) draw(a, b, '#cc0000', lengthLabel(a, b, viewAt(a[0], a[1])));
+  } else if (st.hover) {
+    overlay.appendChild(el('circle', { cx: st.hover[0], cy: st.hover[1], r: 5 / k, fill: 'none', stroke: '#cc0000', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
+  }
+}
+function renderMeasures() {
+  const w = $('measures'); w.textContent = '';
+  st.measures.forEach((m, i) => {
+    const row = document.createElement('div'); row.className = 'row';
+    const t = document.createElement('span'); t.style.flex = 1; t.textContent = `${i + 1}. ${lengthLabel(m.a, m.b, m.view)}`;
+    const x = document.createElement('button'); x.className = 'mini'; x.textContent = '✕';
+    x.onclick = () => { st.measures.splice(i, 1); renderMeasures(); renderOverlay(); };
+    row.append(t, x); w.appendChild(row);
   });
-  fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+}
+function onPick(p) {
+  st.pending.push(p);
+  if (st.pending.length < 2) return renderOverlay();
+  const [a, b] = st.pending; st.pending = [];
+  const view = viewAt(a[0], a[1]);
+  if (st.mode === 'measure') { st.measures.push({ a, b, view }); renderMeasures(); }
+  else if (st.mode === 'calibrate') { st.calib = { a, b, view }; $('calib-form').hidden = false; $('calib-len').focus(); }
+  renderOverlay();
+}
 
-  async function handleFile(file) {
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      showStatus('upload-status', 'error', 'Please upload a PDF file.');
-      return;
-    }
-    showStatus('upload-status', 'loading', '<span class="spinner"></span>Extracting vector data from PDF...');
-    document.getElementById('file-info').style.display = 'block';
-    document.getElementById('file-name').textContent = file.name;
-    document.getElementById('file-status').textContent = 'Uploading...';
+// ── pan / zoom ─────────────────────────────────────────────────────────────
+function applyView() {
+  const { k, tx, ty } = st.view;
+  world.setAttribute('transform', `translate(${tx} ${ty}) scale(${k})`);
+  overlay.setAttribute('transform', `translate(${tx} ${ty}) scale(${k})`);
+  const root = document.documentElement.style;
+  root.setProperty('--sw-structure', Math.max(1, Math.min(0.72 * k * 2.2, 2.6)) + 'px');
+  root.setProperty('--sw-detail', Math.max(0.8, Math.min(0.36 * k * 2.2, 1.6)) + 'px');
+  root.setProperty('--sw-fine', Math.max(0.5, Math.min(0.12 * k * 2.2, 0.9)) + 'px');
+  renderOverlay();
+}
+function screenToWorld(cx, cy) {
+  const r = svg.getBoundingClientRect(), { k, tx, ty } = st.view;
+  return [(cx - r.left - tx) / k, (cy - r.top - ty) / k];
+}
+function fitBox(b) {
+  const r = svg.getBoundingClientRect();
+  const w = b[2] - b[0], h = b[3] - b[1], pad = 30;
+  const k = Math.min((r.width - 2 * pad) / w, (r.height - 2 * pad) / h);
+  st.view = { k, tx: (r.width - w * k) / 2 - b[0] * k, ty: (r.height - h * k) / 2 - b[1] * k };
+  applyView();
+}
+function visibleBox() {
+  const vs = st.scene.views.filter(v => st.viewOn[v.id] && v.kind === 'drawing');
+  if (!vs.length) return [0, 0, st.scene.width, st.scene.height];
+  return [Math.min(...vs.map(v => v.bbox[0])), Math.min(...vs.map(v => v.bbox[1])), Math.max(...vs.map(v => v.bbox[2])), Math.max(...vs.map(v => v.bbox[3]))];
+}
+function fit() { if (st.scene) fitBox(visibleBox()); }
+function zoomAt(f, cx, cy) {
+  const r = svg.getBoundingClientRect(); cx = cx ?? r.left + r.width / 2; cy = cy ?? r.top + r.height / 2;
+  const [wx, wy] = screenToWorld(cx, cy);
+  const k = Math.min(Math.max(st.view.k * f, 0.02), 200);
+  st.view = { k, tx: cx - r.left - wx * k, ty: cy - r.top - wy * k };
+  applyView();
+}
+$('zoom-in').onclick = () => zoomAt(1.4); $('zoom-out').onclick = () => zoomAt(1 / 1.4); $('fit').onclick = fit;
 
-    const form = new FormData();
-    form.append('file', file);
-
-    try {
-      const res = await fetch('/upload', { method: 'POST', body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Upload failed');
-
-      jobId = data.job_id;
-      document.getElementById('file-status').textContent = 'Extracted successfully';
-      showStatus('upload-status', 'success', 'Vector data extracted. Plan loaded below.');
-      document.getElementById('viewer-label').textContent = file.name;
-      document.getElementById('apply-btn').disabled = false;
-      document.getElementById('dl-svg-btn').disabled = false;
-      document.getElementById('dl-pdf-btn').disabled = false;
-      hasUpdated = false;
-      showingOriginal = false;
-      document.getElementById('view-toggle').style.display = 'none';
-      document.getElementById('compare-bar').classList.remove('visible');
-      await loadSVG(data.svg_url);
-    } catch(e) {
-      showStatus('upload-status', 'error', e.message);
-      document.getElementById('file-status').textContent = 'Failed';
-    }
+svg.addEventListener('wheel', e => { if (!st.scene) return; e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY); }, { passive: false });
+let drag = null;
+svg.addEventListener('pointerdown', e => { if (!st.scene) return; svg.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false }; });
+svg.addEventListener('pointermove', e => {
+  if (!st.scene) return;
+  if (drag) {
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.hypot(dx, dy) > 4) drag.moved = true;
+    if (drag.moved) { st.view.tx = drag.tx + dx; st.view.ty = drag.ty + dy; applyView(); return; }
   }
+  const [x, y] = screenToWorld(e.clientX, e.clientY);
+  if (st.mode) { st.hover = snap(x, y).p; renderOverlay(); }
+  const hud = $('hud'), v = viewAt(x, y);
+  hud.style.display = 'block';
+  hud.textContent = `x ${x.toFixed(1)}  y ${y.toFixed(1)} pt` + (v && v.mm_per_pt ? `  ·  ${fmtLen(x * v.mm_per_pt)} , ${fmtLen(y * v.mm_per_pt)} from page origin` : '');
+});
+svg.addEventListener('pointerup', e => {
+  const wasDrag = drag && drag.moved; drag = null;
+  if (wasDrag || !st.mode || !st.scene) return;
+  const [x, y] = screenToWorld(e.clientX, e.clientY);
+  onPick(snap(x, y).p);
+});
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'Escape') setMode(null);
+  else if (e.key === 'm' || e.key === 'M') $('btn-measure').click();
+  else if (e.key === 'c' || e.key === 'C') $('btn-calibrate').click();
+  else if (e.key === 'f' || e.key === 'F') fit();
+});
+window.addEventListener('resize', () => { if (st.scene) applyView(); });
 
-  async function loadSVG(url) {
-    const area = document.getElementById('viewer-area');
-    area.innerHTML = '';
-    const frame = document.createElement('iframe');
-    frame.id = 'svg-frame';
-    frame.src = url + '?t=' + Date.now();
-    frame.style.cssText = 'width:100%;height:100%;border:none;background:white;';
-    area.appendChild(frame);
-    scale = 1;
-    currentUrl = url;
+// ── export ─────────────────────────────────────────────────────────────────
+$('dl-pdf').onclick = () => { if (st.jobId) location.href = `/api/jobs/${st.jobId}/original.pdf`; };
+$('dl-svg').onclick = () => {
+  if (!st.scene) return;
+  const b = visibleBox(), pad = 20;
+  const clone = world.cloneNode(true);
+  clone.removeAttribute('transform'); clone.removeAttribute('id');
+  for (const c of CAT_ORDER) { const g = clone.querySelector('#cat-' + c); if (g && !st.catOn[c]) g.remove(); }
+  const n = clone.querySelector('#notes'); if (n && !st.notesOn) n.remove();
+  for (const id in st.viewOn) if (!st.viewOn[id]) clone.querySelectorAll('.v-' + id).forEach(x => x.remove());
+  const out = el('svg', { xmlns: SVGNS, viewBox: `${b[0] - pad} ${b[1] - pad} ${b[2] - b[0] + 2 * pad} ${b[3] - b[1] + 2 * pad}` });
+  out.appendChild(el('style', {}, 'path{fill:none;stroke-linecap:round;stroke-linejoin:round}.c-structure{stroke-width:.72}.c-detail,.c-dashed{stroke-width:.36}.c-fine,.c-hatch{stroke-width:.12}.c-fills,.c-text{stroke:none}.note{fill:#1d4ed8;font-family:Arial,sans-serif}'));
+  out.appendChild(clone);
+  const ov = el('g');
+  for (const m of st.measures) {
+    ov.appendChild(el('line', { x1: m.a[0], y1: m.a[1], x2: m.b[0], y2: m.b[1], stroke: '#cc0000', 'stroke-width': 1 }));
+    ov.appendChild(el('text', { x: (m.a[0] + m.b[0]) / 2, y: (m.a[1] + m.b[1]) / 2 - 3, 'font-size': 9, 'text-anchor': 'middle', fill: '#cc0000', 'font-family': 'Arial,sans-serif' }, lengthLabel(m.a, m.b, m.view)));
   }
-
-  async function applyChanges() {
-    const desc = document.getElementById('change-input').value.trim();
-    const apiKey = document.getElementById('api-key').value.trim();
-    if (!desc) { showStatus('change-status', 'error', 'Please describe the changes you want.'); return; }
-    if (!jobId) { showStatus('change-status', 'error', 'Please upload a plan first.'); return; }
-
-    document.getElementById('apply-btn').disabled = true;
-    showStatus('change-status', 'loading', '<span class="spinner"></span>AI is applying your changes...');
-
-    try {
-      const res = await fetch('/apply-changes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: jobId, change_description: desc, api_key: apiKey })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to apply changes');
-
-      showStatus('change-status', 'success', 'Changes applied. Viewing updated plan.');
-      hasUpdated = true;
-      showingOriginal = false;
-      document.getElementById('view-toggle').style.display = 'inline-block';
-      document.getElementById('view-toggle').textContent = 'Show Original';
-      document.getElementById('compare-bar').classList.add('visible');
-      document.getElementById('compare-label').textContent = 'Updated plan';
-      await loadSVG(data.updated_svg_url);
-    } catch(e) {
-      showStatus('change-status', 'error', e.message);
-    } finally {
-      document.getElementById('apply-btn').disabled = false;
-    }
-  }
-
-  function toggleView() {
-    if (!hasUpdated || !jobId) return;
-    showingOriginal = !showingOriginal;
-    const btn = document.getElementById('view-toggle');
-    const label = document.getElementById('compare-label');
-    if (showingOriginal) {
-      btn.textContent = 'Show Updated';
-      label.textContent = 'Original plan';
-      loadSVG(`/file/${jobId}/extracted.svg`);
-    } else {
-      btn.textContent = 'Show Original';
-      label.textContent = 'Updated plan';
-      loadSVG(`/file/${jobId}/updated.svg`);
-    }
-  }
-
-  function downloadSVG() {
-    if (!jobId) return;
-    const url = hasUpdated && !showingOriginal
-      ? `/file/${jobId}/updated.svg`
-      : `/file/${jobId}/extracted.svg`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = hasUpdated ? 'updated_plan.svg' : 'extracted_plan.svg';
-    a.click();
-  }
-
-  function downloadPDF() {
-    window.print();
-  }
-
-  function zoom(factor) {
-    scale = Math.min(Math.max(scale * factor, 0.2), 5);
-    const c = document.getElementById('svg-container');
-    if (c) c.style.transform = `scale(${scale})`;
-  }
-
-  function resetZoom() {
-    scale = 1;
-    const c = document.getElementById('svg-container');
-    if (c) c.style.transform = 'scale(1)';
-  }
-
-  function showStatus(id, type, msg) {
-    const el = document.getElementById(id);
-    el.className = `status ${type}`;
-    el.innerHTML = msg;
-    el.style.display = 'block';
-  }
+  out.appendChild(ov);
+  const blob = new Blob([new XMLSerializer().serializeToString(out)], { type: 'image/svg+xml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (st.filename.replace(/\.pdf$/i, '') || 'plan') + '-clean.svg';
+  a.click(); URL.revokeObjectURL(a.href);
+};
 </script>
 </body>
 </html>
