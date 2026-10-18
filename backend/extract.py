@@ -320,13 +320,15 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
         if b["type"] != 0:
             continue
         for ln in b["lines"]:
-            txt = "".join(s["text"] for s in ln["spans"]).strip()
+            raw = "".join(s["text"] for s in ln["spans"])
+            txt = raw.strip()
             if not txt:
                 continue
             n_chars += len(txt)
             x0, y0, x1, y1 = ln["bbox"]
             texts.append({
-                "text": txt, "x": round(x0, 1), "y": round(y1 - (y1 - y0) * 0.2, 1),
+                "text": txt, "wrap": raw != raw.rstrip(),  # trailing space: line continues on the next one
+                "x": round(x0, 1), "y": round(y1 - (y1 - y0) * 0.2, 1),
                 "size": round(ln["spans"][0]["size"], 1),
                 "bbox": [round(x0, 1), round(y0, 1), round(x1, 1), round(y1, 1)],
             })

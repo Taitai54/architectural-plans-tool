@@ -82,6 +82,20 @@
   .stat.bad { color: #b91c1c; font-weight: 600; }
   .stat.warn { color: #b45309; font-weight: 600; }
   .stat.ok { color: #17692e; }
+  .opt-row.active { background: #f0f4ff; border-radius: 6px; padding: 3px 6px; margin: 0 -6px; }
+  .pin-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; border-radius: 10px; background: #dc2626; color: #fff; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+  .pin-badge.resolved { background: #16a34a; }
+  .pin-item { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+  .pin-item:hover { background: #f4f4fa; }
+  .pin-item.sel { background: #eaf0ff; }
+  .pin-item span.t { flex: 1; line-height: 1.35; }
+  .thread { margin-top: 6px; font-size: 12px; }
+  .thread div { padding: 4px 0; border-top: 1px solid #e6e9f5; line-height: 1.4; }
+  .thread small { color: #999; display: block; font-size: 10.5px; }
+  textarea.field { width: 100%; min-height: 64px; resize: vertical; font-family: inherit; }
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+  table.cmp th, table.cmp td { text-align: right; padding: 3px 4px; border-bottom: 1px solid #eee; }
+  table.cmp th:first-child, table.cmp td:first-child { text-align: left; }
   .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: -2px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -158,8 +172,27 @@
       <div id="selected-item"></div>
     </div>
 
+    <div class="sec" id="sec-options" hidden>
+      <h2>7 · Options &amp; changes</h2>
+      <div class="hint" style="margin:0 0 8px">Each option is its own set of furniture, so you can try "stove left" against "stove right". Items start as <b>proposed</b>; accept or reject them.</div>
+      <div id="options"></div>
+      <div class="btns"><button class="btn" id="opt-new">New option</button><button class="btn" id="opt-dup">Duplicate</button></div>
+      <label class="row" style="margin-top:8px"><input type="checkbox" id="show-prop" checked> Show proposed items (untick = existing plan only)</label>
+      <label class="row"><input type="checkbox" id="show-rej"> Show rejected items</label>
+      <div id="changes" class="stat" style="margin-top:6px"></div>
+      <div id="opt-compare"></div>
+    </div>
+
+    <div class="sec" id="sec-review" hidden>
+      <h2>8 · Review pins &amp; comments</h2>
+      <div class="btns" style="margin-top:0"><button class="btn" id="btn-pin">Add pin (P)</button><select class="field" id="pin-filter"><option value="all">All</option><option value="open">Open</option><option value="resolved">Resolved</option></select></div>
+      <div class="hint" id="pin-hint">Pins from the PDF's own notes are imported automatically. Drag a pin to the spot it refers to.</div>
+      <div id="pins" style="margin-top:8px"></div>
+      <div id="pin-detail"></div>
+    </div>
+
     <div class="sec" id="sec-export" hidden>
-      <h2>7 · Export</h2>
+      <h2>9 · Export</h2>
       <div class="btns" style="margin-top:0"><button class="btn" id="dl-svg">Download clean SVG</button><button class="btn" id="dl-pdf">Original PDF</button></div>
     </div>
   </div>
@@ -225,6 +258,8 @@ const st = {
   selected: null,        // selected item id
   placing: null, placeRot: 0, roomPts: [],
   wallGrid: null, mass: null,
+  pins: [], selectedPin: null, pinFilter: 'all', notesImported: false,
+  options: [], activeOption: null, showProposals: true, showRejected: false,
 };
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -315,6 +350,13 @@ async function loadPage(n) {
   st.customItems = (sv.custom_items || []).map(i => ({ ...i }));
   st.measures = (sv.measures || []).map(m => ({ a: [m.a.x, m.a.y], b: [m.b.x, m.b.y], view: null }));
   for (const m of st.measures) m.view = viewAt(m.a[0], m.a[1]);
+  st.options = (sv.options || []).map(o => ({ ...o }));
+  if (!st.options.length) st.options = [{ id: 'o1', name: 'Option A' }];
+  st.activeOption = st.options.some(o => o.id === sv.active_option) ? sv.active_option : st.options[0].id;
+  for (const i of st.items) if (!st.options.some(o => o.id === i.option)) i.option = st.options[0].id;
+  st.pins = (sv.pins || []).map(q => ({ ...q, thread: (q.thread || []).map(c => ({ ...c })) }));
+  st.notesImported = !!sv.notes_imported; st.selectedPin = null; st.showProposals = true; st.showRejected = false;
+  $('show-prop').checked = true; $('show-rej').checked = false;
   st.selected = null; st.pending = []; st.calib = null; st.roomPts = []; setMode(null);
   st.catOn = { ...CLEAN, text: 0 };
   st.viewOn = {};
@@ -322,6 +364,12 @@ async function loadPage(n) {
   st.activeView = (st.scene.views.find(v => v.kind === 'drawing') || st.scene.views[0] || {}).id || null;
   st.notesOn = true;
   buildSnapGrid(); buildWallGrid(); buildMass();
+  if (!st.notesImported) {
+    st.notesImported = true;
+    const imported = importNotes(st.scene.texts);
+    if (imported.length) { st.pins.push(...imported); st.notesOn = false; }   // the notes now live as pins
+    scheduleSave();
+  }
   renderScene();
   renderSidebar();
   fit();
@@ -379,7 +427,7 @@ function applyVisibility() {
 // ── sidebar ────────────────────────────────────────────────────────────────
 function renderSidebar() {
   const sc = st.scene;
-  for (const id of ['sec-views', 'sec-layers', 'sec-scale', 'sec-rooms', 'sec-furn', 'sec-export']) $(id).hidden = false;
+  for (const id of ['sec-views', 'sec-layers', 'sec-scale', 'sec-rooms', 'sec-furn', 'sec-options', 'sec-review', 'sec-export']) $(id).hidden = false;
   $('sec-views').hidden = sc.views.length === 0;
 
   const vwrap = $('views'); vwrap.textContent = '';
@@ -425,7 +473,7 @@ function renderSidebar() {
   $('ratio').value = av && av.ratio ? av.ratio : '';
   const paper = paperName(sc.width, sc.height);
   $('paper-hint').textContent = `Page is ${Math.round(sc.width * PT_TO_MM)} × ${Math.round(sc.height * PT_TO_MM)} mm${paper ? ' (' + paper + ')' : ''}. Entering a ratio is only right if the PDF was printed at full size (e.g. "1:50 @ A1" on an A1 page). Otherwise calibrate.`;
-  renderMeasures(); renderRooms(); renderCatalogue(); renderSelected();
+  renderMeasures(); renderRooms(); renderCatalogue(); renderSelected(); renderOptions(); renderReview();
 }
 const ROOM_HINT = 'Draw a room by clicking its corners (they snap to the walls). Click the first corner again, press Enter or double-click to close it. Needs a scale.';
 const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -447,6 +495,7 @@ $('apply-ratio').onclick = () => { const r = parseFloat($('ratio').value); if (r
 // ── measuring ──────────────────────────────────────────────────────────────
 function setMode(m) {
   st.mode = m; st.pending = []; st.hover = null;
+  $('btn-pin').classList.toggle('on', m === 'pin');
   if (m !== 'place') st.placing = null;
   if (m !== 'room') st.roomPts = [];
   if (m !== 'place' && m !== 'room') $('room-hint').textContent = ROOM_HINT;
@@ -618,6 +667,9 @@ function wallsHit(P) {
 }
 
 // ── furniture ──────────────────────────────────────────────────────────────
+const optItems = () => st.items.filter(i => i.option === st.activeOption);
+const liveItems = () => optItems().filter(i => i.status !== 'rejected');
+const shownItems = () => st.showProposals ? optItems().filter(i => i.status !== 'rejected' || st.showRejected) : [];
 // Local frame: x across the width, y front-to-back, front is +y. Rotation is clockwise on screen.
 function itemGeom(it) {
   const s = mmPerPtAt(it.x, it.y); if (!s) return null;
@@ -631,15 +683,16 @@ function itemGeom(it) {
     testZone: cl > t * 2 ? mk([[-hw + t, hd + t], [hw - t, hd + t], [hw - t, hd + cl], [-hw + t, hd + cl]]) : null,
   };
 }
-function clashOf(it, g) {
+function clashOf(it, g, pool) {
   if (!g) return { hard: false, warn: false };
-  const others = st.items.filter(o => o.id !== it.id).map(itemGeom).filter(Boolean);
+  const others = (pool || liveItems()).filter(o => o.id !== it.id).map(itemGeom).filter(Boolean);
   const hard = wallsHit(g.testBody) || others.some(o => polyIntersects(g.testBody, o.testBody));
   const warn = !!g.testZone && (wallsHit(g.testZone) || others.some(o => polyIntersects(g.testZone, o.testBody)));
   return { hard, warn };
 }
 function hitItem(x, y) {
-  for (let i = st.items.length - 1; i >= 0; i--) { const g = itemGeom(st.items[i]); if (g && pointInPoly(x, y, g.body)) return st.items[i]; }
+  const arr = shownItems();
+  for (let i = arr.length - 1; i >= 0; i--) { const g = itemGeom(arr[i]); if (g && pointInPoly(x, y, g.body)) return arr[i]; }
   return null;
 }
 function haloText(x, y, size, fill, weight, text) {
@@ -648,15 +701,61 @@ function haloText(x, y, size, fill, weight, text) {
 function drawItem(g, it, k, selected, ghost) {
   const geo = itemGeom(it);
   if (!geo) return;
-  const c = clashOf(it, geo);
-  const color = c.hard ? '#dc2626' : c.warn ? '#d97706' : '#1d4ed8';
+  const rejected = it.status === 'rejected', pending = it.status === 'pending' && !ghost;
+  const c = rejected ? { hard: false, warn: false } : clashOf(it, geo);
+  const color = rejected ? '#6b7280' : c.hard ? '#dc2626' : c.warn ? '#d97706' : '#1d4ed8';
   const poly = P => P.map(q => q.join(',')).join(' ');
-  if (geo.zone) g.appendChild(el('polygon', { points: poly(geo.zone), fill: c.warn ? 'rgba(217,119,6,.22)' : 'rgba(29,78,216,.06)', stroke: c.warn ? '#d97706' : '#1d4ed8', 'stroke-width': 1, 'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke', opacity: ghost ? 0.6 : 1 }));
-  g.appendChild(el('polygon', { points: poly(geo.body), fill: c.hard ? 'rgba(220,38,38,.28)' : 'rgba(29,78,216,.22)', stroke: color, 'stroke-width': selected ? 2.6 : 1.5, 'vector-effect': 'non-scaling-stroke', opacity: ghost ? 0.7 : 1 }));
-  g.appendChild(el('line', { x1: geo.front[0][0], y1: geo.front[0][1], x2: geo.front[1][0], y2: geo.front[1][1], stroke: color, 'stroke-width': 3.5, 'vector-effect': 'non-scaling-stroke' }));
+  const base = ghost ? 0.7 : rejected ? 0.4 : 1;
+  if (geo.zone && !rejected) g.appendChild(el('polygon', { points: poly(geo.zone), fill: c.warn ? 'rgba(217,119,6,.22)' : 'rgba(29,78,216,.06)', stroke: c.warn ? '#d97706' : '#1d4ed8', 'stroke-width': 1, 'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke', opacity: ghost ? 0.6 : 1 }));
+  const body = el('polygon', { points: poly(geo.body), fill: rejected ? 'rgba(107,114,128,.12)' : c.hard ? 'rgba(220,38,38,.28)' : 'rgba(29,78,216,.22)', stroke: color, 'stroke-width': selected ? 2.6 : 1.5, 'vector-effect': 'non-scaling-stroke', opacity: base });
+  if (pending || rejected) body.setAttribute('stroke-dasharray', '7 4');
+  g.appendChild(body);
+  g.appendChild(el('line', { x1: geo.front[0][0], y1: geo.front[0][1], x2: geo.front[1][0], y2: geo.front[1][1], stroke: color, 'stroke-width': 3.5, 'vector-effect': 'non-scaling-stroke', opacity: base }));
   const fs = 10 / k;
-  g.appendChild(haloText(it.x, it.y - fs * 0.1, fs, '#1e3a8a', 700, it.name));
-  g.appendChild(haloText(it.x, it.y + fs * 1.1, fs * 0.9, '#1e3a8a', 400, `${Math.round(it.w)}×${Math.round(it.d)}`));
+  g.appendChild(haloText(it.x, it.y - fs * 0.1, fs, rejected ? '#6b7280' : '#1e3a8a', 700, (it.status === 'accepted' ? '✓ ' : '') + it.name));
+  g.appendChild(haloText(it.x, it.y + fs * 1.1, fs * 0.9, rejected ? '#6b7280' : '#1e3a8a', 400, `${Math.round(it.w)}×${Math.round(it.d)}`));
+}
+function handlePos(it, geo) {   // world position of the four edge handles
+  const s = geo.s, hw = it.w / 2 / s, hd = it.d / 2 / s;
+  const mk = (px, py) => { const [rx, ry] = rot2(px, py, it.rot || 0); return [it.x + rx, it.y + ry]; };
+  return { e: mk(hw, 0), w: mk(-hw, 0), n: mk(0, -hd), s: mk(0, hd) };
+}
+function hitHandle(it, wx, wy) {
+  const geo = itemGeom(it); if (!geo) return null;
+  const hp = handlePos(it, geo);
+  for (const side in hp) if (Math.hypot(hp[side][0] - wx, hp[side][1] - wy) * st.view.k <= 9) return side;
+  return null;
+}
+const CURSORS = { e: 'ew-resize', w: 'ew-resize', n: 'ns-resize', s: 'ns-resize' };
+function resizeFrom(it, it0, side, wx, wy) {   // opposite edge stays fixed, so blocks can be pushed against walls
+  const s = mmPerPtAt(it0.x, it0.y); if (!s) return;
+  const [lx, ly] = rot2(wx - it0.x, wy - it0.y, -(it0.rot || 0));
+  const hw0 = it0.w / 2 / s, hd0 = it0.d / 2 / s;
+  const roundMm = mm => Math.max(50, Math.round(mm / 10) * 10);
+  let cx = 0, cy = 0;
+  if (side === 'e' || side === 'w') {
+    const nw = roundMm((side === 'e' ? lx + hw0 : hw0 - lx) * s) / s;
+    cx = side === 'e' ? -hw0 + nw / 2 : hw0 - nw / 2; it.w = Math.round(nw * s);
+  } else {
+    const nd = roundMm((side === 's' ? ly + hd0 : hd0 - ly) * s) / s;
+    cy = side === 's' ? -hd0 + nd / 2 : hd0 - nd / 2; it.d = Math.round(nd * s);
+  }
+  const [dx, dy] = rot2(cx, cy, it0.rot || 0);
+  it.x = it0.x + dx; it.y = it0.y + dy;
+}
+function hitPin(wx, wy) {   // nearest pin within reach, so stacked pins can still be picked individually
+  let best = null, bd = 11;
+  for (const q of st.pins) { const d = Math.hypot(q.x - wx, q.y - wy) * st.view.k; if (pinVisible(q) && d <= bd) { bd = d; best = q; } }
+  return best;
+}
+const pinVisible = q => st.pinFilter === 'all' || q.status === st.pinFilter;
+function drawPins(g, k) {
+  st.pins.forEach((q, i) => {
+    if (!pinVisible(q)) return;
+    const sel = q.id === st.selectedPin;
+    g.appendChild(el('circle', { cx: q.x, cy: q.y, r: 9 / k, fill: q.status === 'open' ? '#dc2626' : '#16a34a', stroke: sel ? '#111827' : '#fff', 'stroke-width': sel ? 3 : 1.5, 'vector-effect': 'non-scaling-stroke' }));
+    g.appendChild(el('text', { x: q.x, y: q.y + 3.5 / k, 'font-size': 10 / k, 'text-anchor': 'middle', fill: '#fff', 'font-family': 'Arial,sans-serif', 'font-weight': 700, 'pointer-events': 'none' }, String(i + 1)));
+  });
 }
 function buildExtras(g, k) {
   const fs = 11 / k;
@@ -666,20 +765,29 @@ function buildExtras(g, k) {
     g.appendChild(haloText(c[0], c[1] - fs * 0.2, fs * 1.2, '#065f46', 700, r.name || 'Room'));
     g.appendChild(haloText(c[0], c[1] + fs * 1.2, fs, '#065f46', 400, m.area == null ? 'set scale' : `${m.area.toFixed(1)} m²`));
   }
-  for (const it of st.items) drawItem(g, it, k, it.id === st.selected, false);
-  if (st.mode === 'place' && st.placing && st.hover) drawItem(g, { ...st.placing, id: 'ghost', x: st.hover[0], y: st.hover[1], rot: st.placeRot || 0 }, k, false, true);
+  for (const it of shownItems()) drawItem(g, it, k, it.id === st.selected, false);
+  const sel = st.items.find(i => i.id === st.selected);
+  if (sel && !st.mode && g === overlay && shownItems().includes(sel)) {
+    const geo = itemGeom(sel);
+    if (geo) {
+      const hp = handlePos(sel, geo), sz = 8 / k;
+      for (const side in hp) g.appendChild(el('rect', { x: hp[side][0] - sz / 2, y: hp[side][1] - sz / 2, width: sz, height: sz, fill: '#fff', stroke: '#1d4ed8', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke', style: 'cursor:' + CURSORS[side] }));
+    }
+  }
+  if (st.mode === 'place' && st.placing && st.hover) drawItem(g, { ...st.placing, id: 'ghost', status: 'accepted', x: st.hover[0], y: st.hover[1], rot: st.placeRot || 0 }, k, false, true);
+  drawPins(g, k);
 }
 
 function placeAt(x, y) {
   const s = mmPerPtAt(x, y);
   if (!s) { $('room-hint').textContent = 'Set the scale for this drawing first (section 4), then place items.'; return; }
-  const it = { id: uid(), kind: st.placing.kind, name: st.placing.name, w: st.placing.w, d: st.placing.d, clear: st.placing.clear, x, y, rot: st.placeRot || 0 };
+  const it = { id: uid(), kind: st.placing.kind, name: st.placing.name, w: st.placing.w, d: st.placing.d, clear: st.placing.clear, option: st.activeOption, status: 'pending', x, y, rot: st.placeRot || 0 };
   st.items.push(it);
   setMode(null);
   selectItem(it.id);
   scheduleSave(); renderRooms();
 }
-function selectItem(id) { st.selected = id; renderSelected(); renderOverlay(); }
+function selectItem(id) { st.selected = id; if (id) st.selectedPin = null; renderSelected(); renderReview(); renderOverlay(); }
 function rotateSelected() { const it = st.items.find(i => i.id === st.selected); if (!it) return; it.rot = ((it.rot || 0) + 90) % 360; scheduleSave(); renderSelected(); renderOverlay(); }
 function deleteSelected() { st.items = st.items.filter(i => i.id !== st.selected); st.selected = null; scheduleSave(); renderRooms(); renderSelected(); renderOverlay(); }
 function nudge(it, key, mm) {
@@ -702,7 +810,11 @@ function renderCatalogue() {
       $('room-hint').textContent = `Placing ${c.name}: click on the plan. R rotates, Esc cancels.`;
       renderCatalogue();
     };
-    if (c.custom) b.oncontextmenu = e => { e.preventDefault(); st.customItems = st.customItems.filter(x => x !== st.customItems.find(y => y.name === c.name && y.w === c.w)); scheduleSave(); renderCatalogue(); };
+    if (c.custom) {
+      const rm = document.createElement('span'); rm.textContent = ' ✕'; rm.title = 'Remove this custom preset'; rm.style.cssText = 'float:right;color:#999;cursor:pointer';
+      rm.onclick = e => { e.stopPropagation(); st.customItems = st.customItems.filter(x => x !== st.customItems.find(y => y.name === c.name && y.w === c.w)); scheduleSave(); renderCatalogue(); };
+      b.appendChild(rm);
+    }
     w.appendChild(b);
   }
 }
@@ -719,26 +831,34 @@ function renderSelected() {
   const it = st.items.find(i => i.id === st.selected);
   if (!it) return;
   const wrap = document.createElement('div'); wrap.className = 'sel-box';
+  const title = document.createElement('div'); title.className = 'hint'; title.style.margin = '0 0 6px';
+  title.textContent = 'Resize: drag the white handles on the block, or type exact sizes.';
+  wrap.appendChild(title);
   const field = (label, val, set, type = 'number') => {
     const row = document.createElement('div'); row.className = 'row';
     const l = document.createElement('span'); l.textContent = label; l.style.width = '64px';
     const i = document.createElement('input'); i.className = 'field'; i.type = type; i.value = val; if (type === 'number') i.min = 0;
-    i.onchange = () => { set(i.value); scheduleSave(); renderRooms(); renderOverlay(); renderSelected(); };
+    i.onchange = () => { set(i.value); scheduleSave(); renderRooms(); renderOverlay(); renderSelected(); renderOptions(); };
     row.append(l, i); wrap.appendChild(row);
   };
   field('Name', it.name, v => { it.name = v.slice(0, 80) || it.name; }, 'text');
-  field('Width mm', it.w, v => { if (+v > 0) it.w = +v; });
-  field('Depth mm', it.d, v => { if (+v > 0) it.d = +v; });
-  field('Clear mm', it.clear, v => { if (+v >= 0) it.clear = +v; });
+  field('Width mm', Math.round(it.w), v => { if (+v > 0) it.w = +v; });
+  field('Depth mm', Math.round(it.d), v => { if (+v > 0) it.d = +v; });
+  field('Clear mm', Math.round(it.clear), v => { if (+v >= 0) it.clear = +v; });
   const g = itemGeom(it), c = clashOf(it, g);
   const stat = document.createElement('div');
   stat.className = 'stat ' + (c.hard ? 'bad' : c.warn ? 'warn' : 'ok');
   stat.textContent = !g ? 'Set the scale for this drawing.' : c.hard ? 'Clashes with a wall or another item.' : c.warn ? 'Fits, but the front clearance is blocked.' : 'Fits, with clearance.';
   wrap.appendChild(stat);
-  const btns = document.createElement('div'); btns.className = 'btns';
-  const rb = document.createElement('button'); rb.className = 'btn'; rb.textContent = 'Rotate 90° (R)'; rb.onclick = rotateSelected;
-  const db = document.createElement('button'); db.className = 'btn'; db.textContent = 'Delete'; db.onclick = deleteSelected;
-  btns.append(rb, db); wrap.appendChild(btns);
+  const state = document.createElement('div'); state.className = 'stat'; state.textContent = 'Status: ' + it.status; wrap.appendChild(state);
+  const btn = (label, fn, cls = 'btn') => { const b = document.createElement('button'); b.className = cls; b.textContent = label; b.onclick = fn; return b; };
+  const setStatus = v => () => { it.status = v; scheduleSave(); renderSelected(); renderRooms(); renderOptions(); renderOverlay(); };
+  const r1 = document.createElement('div'); r1.className = 'btns';
+  r1.append(btn('Accept ✓', setStatus('accepted')), btn('Reject ✕', setStatus('rejected')), btn('Reset', setStatus('pending')));
+  const r2 = document.createElement('div'); r2.className = 'btns';
+  r2.append(btn('Rotate 90° (R)', rotateSelected), btn('Delete', deleteSelected),
+    btn('Save size as preset', () => { st.customItems.push({ kind: 'custom', name: it.name, w: Math.round(it.w), d: Math.round(it.d), clear: Math.round(it.clear) }); scheduleSave(); renderCatalogue(); }));
+  wrap.append(r1, r2);
   box.appendChild(wrap);
 }
 
@@ -748,7 +868,7 @@ function roomMetrics(r) {
   if (!s) return { area: null, perim: null, furn: 0, free: null, n: 0 };
   const area = polyArea(r.poly) * s * s / 1e6;
   let perim = 0; for (let i = 0; i < r.poly.length; i++) { const a = r.poly[i], b = r.poly[(i + 1) % r.poly.length]; perim += Math.hypot(a[0] - b[0], a[1] - b[1]); }
-  const inside = st.items.filter(i => pointInPoly(i.x, i.y, r.poly));
+  const inside = liveItems().filter(i => pointInPoly(i.x, i.y, r.poly));
   const furn = inside.reduce((t, i) => t + i.w * i.d / 1e6, 0);
   return { area, perim: perim * s / 1000, furn, free: area - furn, n: inside.length };
 }
@@ -788,15 +908,152 @@ function renderRooms() {
 }
 $('dl-csv').onclick = () => {
   const q = v => '"' + String(v).replace(/"/g, '""') + '"';
-  const lines = [['Room', 'Area m2', 'Perimeter m', 'Furniture m2', 'Free m2', 'Items'].map(q).join(',')];
+  const optName = id => (st.options.find(o => o.id === id) || {}).name || '';
+  const lines = [[`Room (free area is for ${optName(st.activeOption)})`, 'Area m2', 'Perimeter m', 'Furniture m2', 'Free m2', 'Items'].map(q).join(',')];
   for (const r of st.rooms) { const m = roomMetrics(r); lines.push([r.name, m.area == null ? '' : m.area.toFixed(2), m.perim == null ? '' : m.perim.toFixed(2), m.furn.toFixed(2), m.free == null ? '' : m.free.toFixed(2), m.n].map(q).join(',')); }
-  lines.push('', ['Item', 'Width mm', 'Depth mm', 'Room'].map(q).join(','));
-  for (const i of st.items) { const room = st.rooms.find(r => pointInPoly(i.x, i.y, r.poly)); lines.push([i.name, Math.round(i.w), Math.round(i.d), room ? room.name : ''].map(q).join(',')); }
+  lines.push('', ['Item', 'Width mm', 'Depth mm', 'Room', 'Option', 'Status'].map(q).join(','));
+  for (const i of st.items) { const room = st.rooms.find(r => pointInPoly(i.x, i.y, r.poly)); lines.push([i.name, Math.round(i.w), Math.round(i.d), room ? room.name : '', optName(i.option), i.status].map(q).join(',')); }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
   a.download = (st.filename.replace(/\.pdf$/i, '') || 'plan') + '-schedule.csv';
   a.click(); URL.revokeObjectURL(a.href);
 };
+
+
+// ── review pins ────────────────────────────────────────────────────────────
+function importNotes(texts) {
+  // Lines that end in a trailing space continue on the next line; merge those into one note.
+  const lines = texts.slice().sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+  const groups = [];
+  for (const t of lines) {
+    const g = groups.find(g => g.open && Math.abs(g.x0 - t.bbox[0]) <= 4 && t.bbox[1] - g.lastY > 0 && t.bbox[1] - g.lastY <= t.size * 2.2);
+    if (g) { g.parts.push(t.text); g.lastY = t.bbox[1]; g.open = !!t.wrap; }
+    else groups.push({ parts: [t.text], x0: t.bbox[0], y0: t.bbox[1], y1: t.bbox[3], lastY: t.bbox[1], open: !!t.wrap });
+  }
+  const isNote = t => t.length >= 6;   // skip stray tick labels and similar
+  return groups.map(g => ({ id: uid(), x: g.x0 - 10, y: (g.y0 + g.y1) / 2, text: g.parts.join(' '), status: 'open', source: 'pdf', created: Date.now() / 1000, thread: [] }))
+    .filter(q => isNote(q.text));
+}
+function addPin(x, y) {
+  const q = { id: uid(), x, y, text: '', status: 'open', source: 'user', created: Date.now() / 1000, thread: [] };
+  st.pins.push(q); setMode(null); scheduleSave(); selectPin(q.id, true);
+}
+function selectPin(id, focus) {
+  st.selectedPin = id; if (id) st.selected = null;
+  renderSelected(); renderReview(focus); renderOverlay();
+}
+function panTo(x, y) {
+  const r = svg.getBoundingClientRect(), k = Math.max(st.view.k, 0.6);
+  st.view = { k, tx: r.width / 2 - x * k, ty: r.height / 2 - y * k }; applyView();
+}
+$('btn-pin').onclick = () => { setMode(st.mode === 'pin' ? null : 'pin'); if (st.mode === 'pin') $('pin-hint').textContent = 'Click on the plan where the pin goes. Esc cancels.'; };
+$('pin-filter').onchange = e => { st.pinFilter = e.target.value; renderReview(); renderOverlay(); };
+function renderReview(focusText) {
+  $('pin-hint').textContent = st.mode === 'pin' ? 'Click on the plan where the pin goes. Esc cancels.' : "Pins from the PDF's own notes are imported automatically. Drag a pin to the spot it refers to.";
+  const list = $('pins'); list.textContent = '';
+  const open = st.pins.filter(q => q.status === 'open').length;
+  st.pins.forEach((q, i) => {
+    if (!pinVisible(q)) return;
+    const row = document.createElement('div'); row.className = 'pin-item' + (q.id === st.selectedPin ? ' sel' : '');
+    const b = document.createElement('span'); b.className = 'pin-badge' + (q.status === 'resolved' ? ' resolved' : ''); b.textContent = i + 1;
+    const t = document.createElement('span'); t.className = 't'; t.textContent = q.text ? (q.text.length > 90 ? q.text.slice(0, 90) + '…' : q.text) : '(empty pin)';
+    row.append(b, t);
+    row.onclick = () => { selectPin(q.id); panTo(q.x, q.y); };
+    list.appendChild(row);
+  });
+  if (!st.pins.length) { const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'No pins yet.'; list.appendChild(h); }
+  else { const h = document.createElement('div'); h.className = 'stat'; h.textContent = `${open} open · ${st.pins.length - open} resolved`; list.appendChild(h); }
+
+  const box = $('pin-detail'); box.textContent = '';
+  const q = st.pins.find(p => p.id === st.selectedPin);
+  if (!q) return;
+  const wrap = document.createElement('div'); wrap.className = 'sel-box';
+  const ta = document.createElement('textarea'); ta.className = 'field'; ta.value = q.text; ta.maxLength = 4000; ta.placeholder = 'Describe the question or issue…';
+  ta.onchange = () => { q.text = ta.value; scheduleSave(); renderReview(); };
+  wrap.appendChild(ta);
+  const meta = document.createElement('div'); meta.className = 'stat'; meta.textContent = (q.source === 'pdf' ? 'Imported from the PDF · ' : 'Added by you · ') + q.status; wrap.appendChild(meta);
+  const th = document.createElement('div'); th.className = 'thread';
+  for (const c of q.thread) { const d = document.createElement('div'); d.textContent = c.text; const sm = document.createElement('small'); sm.textContent = c.ts ? new Date(c.ts * 1000).toLocaleString() : ''; d.appendChild(sm); th.appendChild(d); }
+  wrap.appendChild(th);
+  const reply = document.createElement('input'); reply.className = 'field'; reply.type = 'text'; reply.placeholder = 'Reply…'; reply.maxLength = 4000; reply.style.cssText = 'width:100%;margin-top:6px';
+  const addReply = () => { const v = reply.value.trim(); if (!v) return; q.thread.push({ text: v, ts: Date.now() / 1000 }); scheduleSave(); renderReview(); };
+  reply.onkeydown = e => { if (e.key === 'Enter') addReply(); e.stopPropagation(); };
+  wrap.appendChild(reply);
+  const btns = document.createElement('div'); btns.className = 'btns';
+  const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = label; b.onclick = fn; return b; };
+  btns.append(mk('Reply', addReply),
+    mk(q.status === 'open' ? 'Resolve ✓' : 'Reopen', () => { q.status = q.status === 'open' ? 'resolved' : 'open'; scheduleSave(); renderReview(); renderOverlay(); }),
+    mk('Delete', () => { st.pins = st.pins.filter(p => p !== q); st.selectedPin = null; scheduleSave(); renderReview(); renderOverlay(); }));
+  wrap.appendChild(btns);
+  box.appendChild(wrap);
+  if (focusText) ta.focus();
+}
+
+// ── options and changes ────────────────────────────────────────────────────
+function optionStats(optId) {
+  const items = st.items.filter(i => i.option === optId && i.status !== 'rejected');
+  const clashes = items.filter(i => { const g = itemGeom(i); return g && clashOf(i, g, items).hard; }).length;
+  const area = items.reduce((t, i) => t + i.w * i.d / 1e6, 0);
+  let free = 0, tot = 0, ok = st.rooms.length > 0;
+  for (const r of st.rooms) {
+    const c = centroid(r.poly), s = mmPerPtAt(c[0], c[1]); if (!s) { ok = false; continue; }
+    const a = polyArea(r.poly) * s * s / 1e6, f = items.filter(i => pointInPoly(i.x, i.y, r.poly)).reduce((t, i) => t + i.w * i.d / 1e6, 0);
+    tot += a; free += a - f;
+  }
+  return { n: items.length, clashes, area, free: ok ? free : null };
+}
+function switchOption(id) { st.activeOption = id; st.selected = null; scheduleSave(); renderSelected(); renderRooms(); renderOptions(); renderOverlay(); }
+function newOption(clone) {
+  const id = uid(), n = st.options.length + 1;
+  const src = st.activeOption;
+  st.options.push({ id, name: clone ? (st.options.find(o => o.id === src).name + ' copy') : `Option ${String.fromCharCode(64 + Math.min(n, 26))}` });
+  if (clone) for (const i of st.items.filter(i => i.option === src)) st.items.push({ ...i, id: uid(), option: id });
+  switchOption(id);
+}
+$('opt-new').onclick = () => newOption(false);
+$('opt-dup').onclick = () => newOption(true);
+$('show-prop').onchange = e => { st.showProposals = e.target.checked; renderOverlay(); };
+$('show-rej').onchange = e => { st.showRejected = e.target.checked; renderOverlay(); };
+function renderOptions() {
+  const w = $('options'); w.textContent = '';
+  for (const o of st.options) {
+    const row = document.createElement('div'); row.className = 'row opt-row' + (o.id === st.activeOption ? ' active' : '');
+    const rd = document.createElement('input'); rd.type = 'radio'; rd.name = 'opt'; rd.checked = o.id === st.activeOption; rd.onchange = () => switchOption(o.id);
+    const nm = document.createElement('input'); nm.type = 'text'; nm.value = o.name; nm.maxLength = 80;
+    nm.onchange = () => { o.name = nm.value.trim() || o.name; scheduleSave(); renderOptions(); };
+    row.append(rd, nm);
+    if (st.options.length > 1) {
+      const del = document.createElement('button'); del.className = 'mini'; del.textContent = '✕'; del.title = 'Delete this option and its items';
+      del.onclick = () => {
+        if (!confirm(`Delete "${o.name}" and its furniture?`)) return;
+        st.items = st.items.filter(i => i.option !== o.id); st.options = st.options.filter(x => x !== o);
+        if (st.activeOption === o.id) st.activeOption = st.options[0].id;
+        st.selected = null; scheduleSave(); renderSelected(); renderRooms(); renderOptions(); renderOverlay();
+      };
+      row.appendChild(del);
+    }
+    w.appendChild(row);
+  }
+  const mine = optItems(), c = { pending: 0, accepted: 0, rejected: 0 };
+  for (const i of mine) c[i.status]++;
+  $('changes').textContent = `This option: ${c.pending} proposed · ${c.accepted} accepted · ${c.rejected} rejected`;
+  if (c.pending) {
+    const b = document.createElement('button'); b.className = 'btn'; b.style.marginLeft = '8px'; b.textContent = 'Accept all proposed';
+    b.onclick = () => { for (const i of mine) if (i.status === 'pending') i.status = 'accepted'; scheduleSave(); renderOptions(); renderSelected(); renderOverlay(); };
+    $('changes').appendChild(b);
+  }
+  const cmp = $('opt-compare'); cmp.textContent = '';
+  if (st.options.length > 1) {
+    const t = document.createElement('table'); t.className = 'cmp';
+    const head = t.insertRow(); for (const h of ['Option', 'Items', 'Furn. m²', 'Free m²', 'Clashes']) { const th = document.createElement('th'); th.textContent = h; head.appendChild(th); }
+    for (const o of st.options) {
+      const s = optionStats(o.id), r = t.insertRow();
+      const vals = [o.name, s.n, s.area.toFixed(1), s.free == null ? '–' : s.free.toFixed(1), s.clashes];
+      vals.forEach((v, i) => { const td = r.insertCell(); td.textContent = v; if (i === 4 && s.clashes) td.style.color = '#b91c1c'; if (o.id === st.activeOption) td.style.fontWeight = '700'; });
+    }
+    cmp.appendChild(t);
+  }
+}
 
 // ── autosave ───────────────────────────────────────────────────────────────
 let saveTimer = null;
@@ -807,8 +1064,12 @@ function scheduleSave() {
   saveTimer = setTimeout(async () => {
     const pt = q => ({ x: q[0], y: q[1] });
     const body = {
+      pins: st.pins.map(q => ({ id: q.id, x: q.x, y: q.y, text: q.text, status: q.status, source: q.source, created: q.created || 0, thread: q.thread.map(c => ({ text: c.text, ts: c.ts || 0 })) })),
+      options: st.options.map(o => ({ id: o.id, name: o.name })),
+      active_option: st.activeOption || '',
+      notes_imported: st.notesImported,
       rooms: st.rooms.map(r => ({ id: r.id, name: r.name, poly: r.poly.map(pt) })),
-      items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: i.w, d: i.d, clear: i.clear, x: i.x, y: i.y, rot: i.rot || 0 })),
+      items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: i.w, d: i.d, clear: i.clear, option: i.option, status: i.status, x: i.x, y: i.y, rot: i.rot || 0 })),
       measures: st.measures.map(m => ({ a: pt(m.a), b: pt(m.b) })),
       custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: c.w, d: c.d, clear: c.clear })),
     };
@@ -859,10 +1120,15 @@ let drag = null;
 svg.addEventListener('pointerdown', e => {
   if (!st.scene) return;
   svg.setPointerCapture(e.pointerId);
-  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null };
+  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null };
   if (!st.mode) {
-    const [wx, wy] = screenToWorld(e.clientX, e.clientY), hit = hitItem(wx, wy);
-    if (hit) { drag.item = { it: hit, ox: hit.x - wx, oy: hit.y - wy }; selectItem(hit.id); }
+    const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+    const sel = st.items.find(i => i.id === st.selected), side = sel && shownItems().includes(sel) ? hitHandle(sel, wx, wy) : null;
+    const pin = side ? null : hitPin(wx, wy);
+    const hit = side || pin ? null : hitItem(wx, wy);
+    if (side) drag.handle = { side, it: sel, it0: { ...sel } };
+    else if (pin) { drag.pin = { q: pin, ox: pin.x - wx, oy: pin.y - wy }; selectPin(pin.id); }
+    else if (hit) { drag.item = { it: hit, ox: hit.x - wx, oy: hit.y - wy }; selectItem(hit.id); }
   }
 });
 svg.addEventListener('pointermove', e => {
@@ -870,6 +1136,14 @@ svg.addEventListener('pointermove', e => {
   if (drag) {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(dx, dy) > 4) drag.moved = true;
+    if (drag.handle) {
+      if (drag.moved) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); resizeFrom(drag.handle.it, drag.handle.it0, drag.handle.side, wx, wy); renderOverlay(); }
+      return;
+    }
+    if (drag.pin) {
+      if (drag.moved) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.pin.q.x = wx + drag.pin.ox; drag.pin.q.y = wy + drag.pin.oy; renderOverlay(); }
+      return;
+    }
     if (drag.item) {
       if (drag.moved) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.item.it.x = wx + drag.item.ox; drag.item.it.y = wy + drag.item.oy; renderOverlay(); }
       return;
@@ -883,22 +1157,25 @@ svg.addEventListener('pointermove', e => {
   hud.textContent = `x ${x.toFixed(1)}  y ${y.toFixed(1)} pt` + (v && v.mm_per_pt ? `  ·  ${fmtLen(x * v.mm_per_pt)} , ${fmtLen(y * v.mm_per_pt)} from page origin` : '');
 });
 svg.addEventListener('pointerup', e => {
-  const wasDrag = drag && drag.moved, dragItem = drag && drag.item; drag = null;
+  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin); drag = null;
   if (!st.scene) return;
-  if (dragItem) { if (wasDrag) { scheduleSave(); renderRooms(); renderSelected(); } return; }
+  if (dragOther) { if (wasDrag) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); } return; }
+  if (dragItem) { if (wasDrag) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); } return; }
   if (wasDrag) return;
   const [x, y] = screenToWorld(e.clientX, e.clientY);
-  if (!st.mode) { if (st.selected) selectItem(null); return; }
+  if (!st.mode) { if (st.selected) selectItem(null); if (st.selectedPin) selectPin(null); return; }
   if (st.mode === 'place') return placeAt(x, y);
+  if (st.mode === 'pin') return addPin(x, y);
   onPick(snap(x, y).p);
 });
 svg.addEventListener('dblclick', () => { if (st.mode === 'room') closeRoom(); });
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   const sel = st.items.find(i => i.id === st.selected);
-  if (e.key === 'Escape') { if (st.mode) setMode(null); else selectItem(null); }
+  if (e.key === 'Escape') { if (st.mode) setMode(null); else selectItem(null); selectPin(null); }
   else if (e.key === 'Enter' && st.mode === 'room') closeRoom();
   else if ((e.key === 'd' || e.key === 'D') && st.scene) $('btn-room').click();
+  else if ((e.key === 'p' || e.key === 'P') && st.scene) $('btn-pin').click();
   else if ((e.key === 'r' || e.key === 'R') && st.mode === 'place') { st.placeRot = ((st.placeRot || 0) + 90) % 360; renderOverlay(); }
   else if ((e.key === 'r' || e.key === 'R') && sel) rotateSelected();
   else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) deleteSelected();

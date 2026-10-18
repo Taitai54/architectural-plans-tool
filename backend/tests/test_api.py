@@ -166,3 +166,37 @@ def test_hatched_walls_are_exposed_as_mass(client):
     jid = upload(client, plan_pdf()).json()["job_id"]
     mass = client.get(f"/api/jobs/{jid}/pages/1").json()["mass"]
     assert mass["cell"] > 0 and len(mass["cells"]) >= 4 and len(mass["cells"]) % 2 == 0
+
+
+def test_state_pins_options_and_item_status(client):
+    jid = upload(client, plan_pdf()).json()["job_id"]
+    url = f"/api/jobs/{jid}/pages/1/state"
+    item = {"id": "i1", "kind": "fridge", "name": "Fridge", "w": 700, "d": 700, "clear": 900, "x": 50, "y": 40, "rot": 0}
+    state = {
+        "pins": [{"id": "p1", "x": 10, "y": 20, "text": "fridge where", "status": "open", "source": "pdf",
+                  "thread": [{"text": "kitchen end?", "ts": 1.5}]}],
+        "options": [{"id": "o1", "name": "Option A"}, {"id": "o2", "name": "Stove on the right"}],
+        "active_option": "o2", "notes_imported": True,
+        "items": [dict(item, option="o1", status="accepted")],
+    }
+    assert client.put(url, json=state).status_code == 200
+    got = client.get(f"/api/jobs/{jid}/pages/1").json()["state"]
+    assert got["pins"][0]["thread"][0]["text"] == "kitchen end?"
+    assert got["active_option"] == "o2" and got["notes_imported"] is True
+    assert got["items"][0]["status"] == "accepted" and got["items"][0]["option"] == "o1"
+    # items saved before options existed still load (defaults)
+    assert client.put(url, json={"items": [item]}).status_code == 200
+    assert client.get(f"/api/jobs/{jid}/pages/1").json()["state"]["items"][0]["status"] == "pending"
+    assert client.put(url, json={"items": [dict(item, status="bogus")]}).status_code == 422
+    assert client.put(url, json={"pins": [{"id": "p1", "x": 0, "y": 0, "text": "x", "status": "closed"}]}).status_code == 422
+
+
+def test_wrapped_lines_are_flagged(client):
+    doc = pymupdf.open()
+    page = doc.new_page(width=842, height=595)
+    page.insert_text((50, 100), "first line of a wrapped note ", fontsize=10)
+    page.insert_text((50, 112), "standalone", fontsize=10)
+    jid = upload(client, doc.tobytes()).json()["job_id"]
+    texts = {t["text"]: t["wrap"] for t in client.get(f"/api/jobs/{jid}/pages/1").json()["texts"]}
+    assert texts["first line of a wrapped note"] is True
+    assert texts["standalone"] is False

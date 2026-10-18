@@ -3,6 +3,7 @@ import re
 import shutil
 import uuid
 from pathlib import Path
+from typing import Literal
 
 import pymupdf
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -187,6 +188,8 @@ class Item(BaseModel):
     w: float = Field(gt=0, le=50000)       # millimetres, across the front
     d: float = Field(gt=0, le=50000)       # millimetres, front to back
     clear: float = Field(ge=0, le=10000)   # working / door clearance in front, mm
+    option: str = Field(default="", max_length=40)   # which design option the item belongs to
+    status: Literal["pending", "accepted", "rejected"] = "pending"
     x: float = Field(ge=-1e6, le=1e6)      # centre, PDF points
     y: float = Field(ge=-1e6, le=1e6)
     rot: float = Field(ge=-360, le=360)    # degrees, multiples of 90 in the UI
@@ -205,7 +208,32 @@ class CatalogueItem(BaseModel):
     clear: float = Field(ge=0, le=10000)
 
 
+class Comment(BaseModel):
+    text: str = Field(max_length=4000)
+    ts: float = 0
+
+
+class Pin(BaseModel):
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    x: float = Field(ge=-1e6, le=1e6)
+    y: float = Field(ge=-1e6, le=1e6)
+    text: str = Field(max_length=4000)
+    status: Literal["open", "resolved"] = "open"
+    source: Literal["pdf", "user"] = "user"
+    created: float = 0
+    thread: list[Comment] = Field(default_factory=list, max_length=200)
+
+
+class Option(BaseModel):
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    name: str = Field(max_length=80)
+
+
 class PageState(BaseModel):
+    pins: list[Pin] = Field(default_factory=list, max_length=500)
+    options: list[Option] = Field(default_factory=list, max_length=20)
+    active_option: str = Field(default="", max_length=40)
+    notes_imported: bool = False
     rooms: list[Room] = Field(default_factory=list, max_length=200)
     items: list[Item] = Field(default_factory=list, max_length=1000)
     measures: list[Measure] = Field(default_factory=list, max_length=500)
