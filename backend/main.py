@@ -11,10 +11,14 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import ai
 import extract
+from catalogue import CATALOGUE
+from planner import World
 
 # Local-only tool: no CORS middleware (the frontend is served from the same origin),
 # and run.sh binds to 127.0.0.1.
+ai.load_env_file(Path(__file__).parent / ".env")   # API keys stay on the server
 app = FastAPI()
 
 OUTPUT_DIR = Path(__file__).parent / "outputs"
@@ -120,9 +124,8 @@ def get_job(job_id: str):
     return summary(meta, pages)
 
 
-@app.get("/api/jobs/{job_id}/pages/{page}")
-def get_page(job_id: str, page: int):
-    d = job_dir(job_id)
+def _load_scene(d: Path, page: int) -> dict:
+    """Extracted scene for a page with the user's view names and scales merged in."""
     meta = read_json(d / "meta.json")
     pm = next((m for m in meta["pages"] if m["page"] == page), None)
     if pm is None:
@@ -133,6 +136,13 @@ def get_page(job_id: str, page: int):
         v["name"] = saved.get("name") or v["name"]
         v["mm_per_pt"] = saved.get("mm_per_pt")
         v["ratio"] = saved.get("ratio")
+    return scene
+
+
+@app.get("/api/jobs/{job_id}/pages/{page}")
+def get_page(job_id: str, page: int):
+    d = job_dir(job_id)
+    scene = _load_scene(d, page)
     scene["categories"] = [{"id": k, "label": label} for k, label in extract.CATEGORIES]
     sp = _state_path(d, page)
     scene["state"] = read_json(sp) if sp.exists() else PageState().model_dump()
@@ -190,6 +200,9 @@ class Item(BaseModel):
     clear: float = Field(ge=0, le=10000)   # working / door clearance in front, mm
     option: str = Field(default="", max_length=40)   # which design option the item belongs to
     status: Literal["pending", "accepted", "rejected"] = "pending"
+    source: Literal["user", "ai"] = "user"
+    note: str = Field(default="", max_length=500)    # why the assistant proposed it
+    replaces: str = Field(default="", max_length=40)  # id of the item this proposal supersedes when accepted
     x: float = Field(ge=-1e6, le=1e6)      # centre, PDF points
     y: float = Field(ge=-1e6, le=1e6)
     rot: float = Field(ge=-360, le=360)    # degrees, multiples of 90 in the UI
@@ -258,6 +271,47 @@ def put_state(job_id: str, page: int, body: PageState):
     _page_meta(d, page)
     write_json(_state_path(d, page), body.model_dump())
     return {"ok": True}
+
+
+# ── AI assistant ──────────────────────────────────────────────────────────────
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str = Field(max_length=2000)
+
+
+class AIRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+    provider: str = Field(default="demo", pattern=r"^[a-z]{2,20}$")
+    model: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._:/-]{1,80}$")
+    state: PageState
+    history: list[ChatTurn] = Field(default_factory=list, max_length=12)
+
+
+@app.get("/api/catalogue")
+def get_catalogue():
+    return CATALOGUE
+
+
+@app.get("/api/ai/providers")
+def ai_providers():
+    return ai.provider_status()      # booleans only: keys are never sent to the browser
+
+
+@app.post("/api/jobs/{job_id}/pages/{page}/ai")
+def ai_assist(job_id: str, page: int, body: AIRequest):
+    d = job_dir(job_id)
+    scene = _load_scene(d, page)
+    state = body.state.model_dump()
+    option = state.get("active_option") or (state["options"][0]["id"] if state.get("options") else "")
+    world = World(scene, state, option)
+    try:
+        provider = ai.make_provider(body.provider, body.model, world)
+        result = ai.run_agent(provider, world, body.prompt, [t.model_dump() for t in body.history])
+    except ai.AIError as e:
+        raise HTTPException(400, ai.scrub(str(e)))
+    except Exception as e:           # provider/network failures: report, without leaking keys
+        raise HTTPException(502, ai.scrub(f"The AI provider request failed ({type(e).__name__}): {str(e)[:300]}"))
+    return {**result, "provider": body.provider, "model": provider.model}
 
 
 @app.get("/api/jobs/{job_id}/original.pdf")

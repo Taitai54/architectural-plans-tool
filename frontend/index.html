@@ -96,6 +96,18 @@
   table.cmp { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
   table.cmp th, table.cmp td { text-align: right; padding: 3px 4px; border-bottom: 1px solid #eee; }
   table.cmp th:first-child, table.cmp td:first-child { text-align: left; }
+  #chat { background: #fff; border-top: 1px solid #e0e0e8; padding: 8px 14px 10px; flex-shrink: 0; display: none; }
+  #chat.visible { display: block; }
+  #chat-log { max-height: 170px; overflow-y: auto; margin-bottom: 8px; font-size: 13px; }
+  .msg { padding: 6px 10px; border-radius: 8px; margin: 4px 0; line-height: 1.4; max-width: 92%; white-space: pre-wrap; }
+  .msg.user { background: #eaf0ff; margin-left: auto; }
+  .msg.ai { background: #f4f4fa; }
+  .msg.err { background: #fff0f0; color: #b91c1c; }
+  .msg .acts { margin-top: 6px; display: flex; gap: 6px; }
+  .msg .acts .btn { padding: 3px 8px; font-size: 11px; }
+  .chat-row { display: flex; gap: 6px; align-items: center; }
+  .chat-row #chat-input { flex: 1; min-width: 0; }
+  .chat-row select, .chat-row #ai-model { width: auto; max-width: 150px; }
   .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: -2px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -210,6 +222,16 @@
       <svg id="svg" xmlns="http://www.w3.org/2000/svg" style="display:none"><g id="world"></g><g id="overlay"></g></svg>
       <div id="hud"></div>
     </div>
+    <div id="chat">
+      <div id="chat-log"></div>
+      <div class="chat-row">
+        <input class="field" type="text" id="chat-input" maxlength="2000" placeholder='Ask, e.g. "put the fridge against the left wall of the kitchen"'>
+        <button class="btn primary" id="chat-send">Send</button>
+        <select class="field" id="ai-provider" title="AI provider"></select>
+        <input class="field" type="text" id="ai-model" placeholder="model (optional)" maxlength="80">
+      </div>
+      <div class="hint" id="ai-hint"></div>
+    </div>
   </div>
 </div>
 
@@ -220,25 +242,8 @@ const CAT_ORDER = ['fills', 'fine', 'hatch', 'dashed', 'detail', 'structure', 't
 const CLEAN = { structure: 1, detail: 1, fills: 1, dashed: 1, hatch: 1, fine: 0, text: 0 };
 
 const $ = id => document.getElementById(id);
-// Typical UK sizes in mm. w = across the front, d = front to back, clear = space needed in front.
-const CATALOGUE = [
-  { kind: 'fridge', name: 'Under-counter fridge', w: 600, d: 600, clear: 800 },
-  { kind: 'fridge', name: 'Tall fridge-freezer', w: 700, d: 700, clear: 900 },
-  { kind: 'fridge', name: 'American fridge-freezer', w: 910, d: 720, clear: 1000 },
-  { kind: 'cooker', name: 'Cooker', w: 600, d: 600, clear: 1000 },
-  { kind: 'cooker', name: 'Range cooker', w: 900, d: 600, clear: 1000 },
-  { kind: 'dishwasher', name: 'Dishwasher', w: 600, d: 600, clear: 800 },
-  { kind: 'washer', name: 'Washing machine', w: 600, d: 600, clear: 800 },
-  { kind: 'washer', name: 'Washer + dryer stack', w: 600, d: 650, clear: 800 },
-  { kind: 'cylinder', name: 'Hot water cylinder', w: 600, d: 600, clear: 600 },
-  { kind: 'island', name: 'Kitchen island', w: 2400, d: 1000, clear: 1000 },
-  { kind: 'table', name: 'Dining table (6)', w: 1800, d: 900, clear: 0 },
-  { kind: 'sofa', name: 'Sofa (3-seat)', w: 2100, d: 900, clear: 600 },
-  { kind: 'sofa', name: 'Sofa (2-seat)', w: 1700, d: 900, clear: 600 },
-  { kind: 'tv', name: 'TV unit', w: 1600, d: 450, clear: 600 },
-  { kind: 'bed', name: 'Double bed', w: 1500, d: 2000, clear: 600 },
-  { kind: 'wardrobe', name: 'Wardrobe', w: 1000, d: 600, clear: 800 },
-];
+// Standard sizes come from the backend (backend/catalogue.py) so the viewer and the AI agree.
+let CATALOGUE = [];
 const uid = () => 'x' + Math.random().toString(36).slice(2, 10);
 
 const stage = $('stage'), svg = $('svg'), world = $('world'), overlay = $('overlay');
@@ -358,6 +363,7 @@ async function loadPage(n) {
   st.notesImported = !!sv.notes_imported; st.selectedPin = null; st.showProposals = true; st.showRejected = false;
   $('show-prop').checked = true; $('show-rej').checked = false;
   st.selected = null; st.pending = []; st.calib = null; st.roomPts = []; setMode(null);
+  chat.log = []; renderChat(); $('chat').classList.add('visible');
   st.catOn = { ...CLEAN, text: 0 };
   st.viewOn = {};
   for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock';
@@ -712,7 +718,7 @@ function drawItem(g, it, k, selected, ghost) {
   g.appendChild(body);
   g.appendChild(el('line', { x1: geo.front[0][0], y1: geo.front[0][1], x2: geo.front[1][0], y2: geo.front[1][1], stroke: color, 'stroke-width': 3.5, 'vector-effect': 'non-scaling-stroke', opacity: base }));
   const fs = 10 / k;
-  g.appendChild(haloText(it.x, it.y - fs * 0.1, fs, rejected ? '#6b7280' : '#1e3a8a', 700, (it.status === 'accepted' ? '✓ ' : '') + it.name));
+  g.appendChild(haloText(it.x, it.y - fs * 0.1, fs, rejected ? '#6b7280' : '#1e3a8a', 700, (it.status === 'accepted' ? '✓ ' : it.source === 'ai' && it.status === 'pending' ? '✦ ' : '') + it.name));
   g.appendChild(haloText(it.x, it.y + fs * 1.1, fs * 0.9, rejected ? '#6b7280' : '#1e3a8a', 400, `${Math.round(it.w)}×${Math.round(it.d)}`));
 }
 function handlePos(it, geo) {   // world position of the four edge handles
@@ -766,6 +772,10 @@ function buildExtras(g, k) {
     g.appendChild(haloText(c[0], c[1] + fs * 1.2, fs, '#065f46', 400, m.area == null ? 'set scale' : `${m.area.toFixed(1)} m²`));
   }
   for (const it of shownItems()) drawItem(g, it, k, it.id === st.selected, false);
+  for (const it of shownItems()) {      // a pending change links back to the item it would replace
+    const old = it.replaces && st.items.find(i => i.id === it.replaces);
+    if (old && shownItems().includes(old)) g.appendChild(el('line', { x1: old.x, y1: old.y, x2: it.x, y2: it.y, stroke: '#7c3aed', 'stroke-width': 1.5, 'stroke-dasharray': '3 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
+  }
   const sel = st.items.find(i => i.id === st.selected);
   if (sel && !st.mode && g === overlay && shownItems().includes(sel)) {
     const geo = itemGeom(sel);
@@ -834,6 +844,11 @@ function renderSelected() {
   const title = document.createElement('div'); title.className = 'hint'; title.style.margin = '0 0 6px';
   title.textContent = 'Resize: drag the white handles on the block, or type exact sizes.';
   wrap.appendChild(title);
+  if (it.source === 'ai') {
+    const why = document.createElement('div'); why.className = 'stat'; why.style.cssText = 'color:#6d28d9;margin-bottom:6px';
+    why.textContent = '✦ Proposed by the assistant' + (it.note ? ': ' + it.note : '') + (it.replaces ? ' (replaces an existing item)' : '');
+    wrap.appendChild(why);
+  }
   const field = (label, val, set, type = 'number') => {
     const row = document.createElement('div'); row.className = 'row';
     const l = document.createElement('span'); l.textContent = label; l.style.width = '64px';
@@ -852,7 +867,7 @@ function renderSelected() {
   wrap.appendChild(stat);
   const state = document.createElement('div'); state.className = 'stat'; state.textContent = 'Status: ' + it.status; wrap.appendChild(state);
   const btn = (label, fn, cls = 'btn') => { const b = document.createElement('button'); b.className = cls; b.textContent = label; b.onclick = fn; return b; };
-  const setStatus = v => () => { it.status = v; scheduleSave(); renderSelected(); renderRooms(); renderOptions(); renderOverlay(); };
+  const setStatus = v => () => { if (v === 'accepted') acceptItem(it); else it.status = v; scheduleSave(); renderSelected(); renderRooms(); renderOptions(); renderOverlay(); };
   const r1 = document.createElement('div'); r1.className = 'btns';
   r1.append(btn('Accept ✓', setStatus('accepted')), btn('Reject ✕', setStatus('rejected')), btn('Reset', setStatus('pending')));
   const r2 = document.createElement('div'); r2.className = 'btns';
@@ -1039,7 +1054,7 @@ function renderOptions() {
   $('changes').textContent = `This option: ${c.pending} proposed · ${c.accepted} accepted · ${c.rejected} rejected`;
   if (c.pending) {
     const b = document.createElement('button'); b.className = 'btn'; b.style.marginLeft = '8px'; b.textContent = 'Accept all proposed';
-    b.onclick = () => { for (const i of mine) if (i.status === 'pending') i.status = 'accepted'; scheduleSave(); renderOptions(); renderSelected(); renderOverlay(); };
+    b.onclick = () => { for (const i of mine) if (i.status === 'pending') acceptItem(i); scheduleSave(); renderOptions(); renderSelected(); renderOverlay(); };
     $('changes').appendChild(b);
   }
   const cmp = $('opt-compare'); cmp.textContent = '';
@@ -1055,25 +1070,145 @@ function renderOptions() {
   }
 }
 
+
+function acceptItem(it) {
+  it.status = 'accepted';
+  if (it.replaces) {                       // accepting a change retires the item it supersedes
+    const old = st.items.find(i => i.id === it.replaces);
+    if (old) old.status = 'rejected';
+    it.replaces = '';
+  }
+}
+
+// ── AI assistant ───────────────────────────────────────────────────────────
+const chat = { log: [], busy: false, providers: [] };
+const jsonPost = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+function addMsg(kind, text, rec) {
+  chat.log.push({ kind, text, rec });
+  renderChat();
+}
+function renderChat() {
+  const log = $('chat-log'); log.textContent = '';
+  for (const m of chat.log) {
+    const d = document.createElement('div'); d.className = 'msg ' + m.kind;
+    d.appendChild(document.createTextNode(m.text));
+    if (m.rec && (m.rec.addedItems.length || m.rec.updatedItems.length || m.rec.movedPins.length || m.rec.addedPins.length || m.rec.replies.length)) {
+      const acts = document.createElement('div'); acts.className = 'acts';
+      const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = label; b.onclick = fn; return b; };
+      if (m.rec.done) { const t = document.createElement('span'); t.className = 'hint'; t.textContent = m.rec.done; acts.appendChild(t); }
+      else {
+        if (m.rec.addedItems.length || m.rec.updatedItems.length) acts.appendChild(mk('Accept', () => { acceptFromRec(m.rec); m.rec.done = 'Accepted'; renderChat(); }));
+        acts.appendChild(mk('Undo', () => { undoRec(m.rec); m.rec.done = 'Undone'; renderChat(); }));
+      }
+      d.appendChild(acts);
+    }
+    log.appendChild(d);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+function applyOps(ops) {
+  const rec = { addedItems: [], updatedItems: [], movedPins: [], addedPins: [], replies: [] };
+  for (const op of ops) {
+    if (op.op === 'add_item') {
+      const it = { ...op.item }, ex = st.items.find(i => i.id === it.id);
+      if (ex) { rec.updatedItems.push({ id: ex.id, before: { ...ex } }); Object.assign(ex, it); }
+      else { st.items.push(it); rec.addedItems.push(it.id); }
+    } else if (op.op === 'add_pin') {
+      st.pins.push({ ...op.pin, created: Date.now() / 1000, thread: op.pin.thread || [] }); rec.addedPins.push(op.pin.id);
+    } else if (op.op === 'move_pin') {
+      const q = st.pins.find(p => p.id === op.id);
+      if (q) { rec.movedPins.push({ id: q.id, from: { x: q.x, y: q.y } }); q.x = op.x; q.y = op.y; }
+    } else if (op.op === 'reply_pin') {
+      const q = st.pins.find(p => p.id === op.id);
+      if (q) { q.thread.push({ text: op.text, ts: Date.now() / 1000 }); rec.replies.push({ id: q.id, text: op.text }); }
+    }
+  }
+  scheduleSave(); renderRooms(); renderOptions(); renderReview(); renderSelected(); renderOverlay();
+  return rec;
+}
+function acceptFromRec(rec) {
+  for (const id of rec.addedItems.concat(rec.updatedItems.map(u => u.id))) { const it = st.items.find(i => i.id === id); if (it && it.status === 'pending') acceptItem(it); }
+  scheduleSave(); renderRooms(); renderOptions(); renderSelected(); renderOverlay();
+}
+function undoRec(rec) {
+  st.items = st.items.filter(i => !rec.addedItems.includes(i.id));
+  for (const u of rec.updatedItems) { const it = st.items.find(i => i.id === u.id); if (it) Object.assign(it, u.before); }
+  st.pins = st.pins.filter(p => !rec.addedPins.includes(p.id));
+  for (const m of rec.movedPins) { const q = st.pins.find(p => p.id === m.id); if (q) { q.x = m.from.x; q.y = m.from.y; } }
+  for (const r of rec.replies) { const q = st.pins.find(p => p.id === r.id); if (q) { const i = q.thread.map(c => c.text).lastIndexOf(r.text); if (i >= 0) q.thread.splice(i, 1); } }
+  if (st.selected && !st.items.some(i => i.id === st.selected)) st.selected = null;
+  scheduleSave(); renderRooms(); renderOptions(); renderReview(); renderSelected(); renderOverlay();
+}
+async function sendChat() {
+  const input = $('chat-input'), prompt = input.value.trim();
+  if (!prompt || chat.busy || !st.jobId) return;
+  chat.busy = true; $('chat-send').disabled = true; input.value = '';
+  const history = chat.log.filter(m => m.kind !== 'err').map(m => ({ role: m.kind === 'user' ? 'user' : 'assistant', text: m.text }));
+  addMsg('user', prompt);
+  addMsg('ai', 'Thinking…');
+  const thinking = chat.log[chat.log.length - 1];
+  try {
+    const res = await api(`/api/jobs/${st.jobId}/pages/${st.page}/ai`, jsonPost({
+      prompt, provider: $('ai-provider').value || 'demo', model: $('ai-model').value.trim() || null, state: statePayload(), history,
+    }));
+    chat.log.splice(chat.log.indexOf(thinking), 1);
+    const rec = applyOps(res.ops);
+    addMsg('ai', res.message, rec);
+    const first = st.items.find(i => i.id === rec.addedItems[0]);
+    if (first) { selectItem(first.id); panTo(first.x, first.y); }
+  } catch (e) {
+    chat.log.splice(chat.log.indexOf(thinking), 1);
+    addMsg('err', e.message);
+  } finally { chat.busy = false; $('chat-send').disabled = false; input.focus(); }
+}
+$('chat-send').onclick = sendChat;
+$('chat-input').onkeydown = e => { if (e.key === 'Enter') sendChat(); e.stopPropagation(); };
+$('ai-provider').onchange = () => { try { localStorage.setItem('ai-provider', $('ai-provider').value); } catch (_) {} updateAiHint(); };
+$('ai-model').onchange = () => { try { localStorage.setItem('ai-model', $('ai-model').value); } catch (_) {} };
+function updateAiHint() {
+  const p = chat.providers.find(x => x.id === $('ai-provider').value);
+  $('ai-hint').textContent = !p ? '' : p.id === 'demo' ? 'Demo parser: understands simple phrases only. Pick a provider with a key for a real assistant.'
+    : !p.configured ? `Not configured: add the API key to backend/.env and restart.` : !p.sdk_installed ? 'SDK missing: pip install -r backend/requirements-ai.txt' : `Using ${p.label}. Proposals appear as pending items marked ✦.`;
+}
+async function initAi() {
+  try {
+    CATALOGUE = await api('/api/catalogue');
+    if (st.scene) renderCatalogue();
+  } catch (e) { status('upload-status', 'error', 'Could not load the catalogue: ' + e.message); }
+  try {
+    chat.providers = await api('/api/ai/providers');
+    const sel = $('ai-provider'); sel.textContent = '';
+    for (const p of chat.providers) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.label.split(' (')[0] + (p.configured ? '' : ' (no key)'); sel.appendChild(o); }
+    let saved = null; try { saved = localStorage.getItem('ai-provider'); } catch (_) {}
+    const best = chat.providers.find(p => p.id === saved) || chat.providers.find(p => p.configured && p.id !== 'demo') || chat.providers.find(p => p.id === 'demo');
+    if (best) sel.value = best.id;
+    try { $('ai-model').value = localStorage.getItem('ai-model') || ''; } catch (_) {}
+    updateAiHint();
+  } catch (_) { $('ai-hint').textContent = 'AI providers unavailable.'; }
+}
+initAi();
+
 // ── autosave ───────────────────────────────────────────────────────────────
 let saveTimer = null;
+function statePayload() {
+  const pt = q => ({ x: q[0], y: q[1] });
+  return {
+    pins: st.pins.map(q => ({ id: q.id, x: q.x, y: q.y, text: q.text, status: q.status, source: q.source, created: q.created || 0, thread: q.thread.map(c => ({ text: c.text, ts: c.ts || 0 })) })),
+    options: st.options.map(o => ({ id: o.id, name: o.name })),
+    active_option: st.activeOption || '',
+    notes_imported: st.notesImported,
+    rooms: st.rooms.map(r => ({ id: r.id, name: r.name, poly: r.poly.map(pt) })),
+    items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: i.w, d: i.d, clear: i.clear, option: i.option, status: i.status, source: i.source || 'user', note: i.note || '', replaces: i.replaces || '', x: i.x, y: i.y, rot: i.rot || 0 })),
+    measures: st.measures.map(m => ({ a: pt(m.a), b: pt(m.b) })),
+    custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: c.w, d: c.d, clear: c.clear })),
+  };
+}
 function scheduleSave() {
   if (!st.jobId) return;
   clearTimeout(saveTimer);
   const job = st.jobId, page = st.page;
   saveTimer = setTimeout(async () => {
-    const pt = q => ({ x: q[0], y: q[1] });
-    const body = {
-      pins: st.pins.map(q => ({ id: q.id, x: q.x, y: q.y, text: q.text, status: q.status, source: q.source, created: q.created || 0, thread: q.thread.map(c => ({ text: c.text, ts: c.ts || 0 })) })),
-      options: st.options.map(o => ({ id: o.id, name: o.name })),
-      active_option: st.activeOption || '',
-      notes_imported: st.notesImported,
-      rooms: st.rooms.map(r => ({ id: r.id, name: r.name, poly: r.poly.map(pt) })),
-      items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: i.w, d: i.d, clear: i.clear, option: i.option, status: i.status, x: i.x, y: i.y, rot: i.rot || 0 })),
-      measures: st.measures.map(m => ({ a: pt(m.a), b: pt(m.b) })),
-      custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: c.w, d: c.d, clear: c.clear })),
-    };
-    try { await api(`/api/jobs/${job}/pages/${page}/state`, jsonPut(body)); }
+    try { await api(`/api/jobs/${job}/pages/${page}/state`, jsonPut(statePayload())); }
     catch (e) { status('upload-status', 'error', 'Could not save: ' + e.message); }
   }, 500);
 }
