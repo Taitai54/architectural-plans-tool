@@ -8,78 +8,107 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; height: 100vh; display: flex; flex-direction: column; }
 
-  header { background: #1a1a2e; color: white; padding: 14px 24px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  header { background: #1a1a2e; color: white; padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
   header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
   header span { font-size: 12px; color: #8888aa; }
 
   .main { display: flex; flex: 1; overflow: hidden; }
 
-  /* ── Sidebar ── */
-  .sidebar { width: 320px; flex-shrink: 0; background: white; border-right: 1px solid #e0e0e8; display: flex; flex-direction: column; overflow-y: auto; }
+  .sidebar { width: 320px; flex-shrink: 0; background: white; border-right: 1px solid #e0e0e8; overflow-y: auto; }
+  .sec { padding: 16px 18px; border-bottom: 1px solid #f0f0f5; }
+  .sec h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #666; margin-bottom: 10px; }
+  .sec[hidden] { display: none; }
 
-  .sidebar-section { padding: 20px; border-bottom: 1px solid #f0f0f5; }
-  .sidebar-section h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #666; margin-bottom: 12px; }
-
-  /* Upload zone */
-  .upload-zone { border: 2px dashed #c0c0d0; border-radius: 8px; padding: 28px 16px; text-align: center; cursor: pointer; transition: all 0.2s; background: #fafafa; }
+  .upload-zone { border: 2px dashed #c0c0d0; border-radius: 8px; padding: 20px 12px; text-align: center; cursor: pointer; background: #fafafa; font-size: 13px; color: #666; }
   .upload-zone:hover, .upload-zone.drag-over { border-color: #1a1a2e; background: #f0f0f8; }
-  .upload-zone svg { margin-bottom: 10px; opacity: 0.4; }
-  .upload-zone p { font-size: 13px; color: #666; }
   .upload-zone strong { color: #1a1a2e; }
   #file-input { display: none; }
 
-  /* File info */
-  .file-info { background: #f0f4ff; border-radius: 6px; padding: 10px 12px; font-size: 12px; color: #333; display: none; }
-  .file-info strong { display: block; margin-bottom: 2px; font-size: 13px; }
-
-  /* API key */
-  .input-row { display: flex; flex-direction: column; gap: 6px; }
-  .input-row label { font-size: 12px; color: #555; font-weight: 500; }
-  .input-row input, .input-row textarea { border: 1px solid #d0d0dc; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; outline: none; transition: border 0.2s; }
-  .input-row input:focus, .input-row textarea:focus { border-color: #1a1a2e; }
-  .input-row textarea { resize: vertical; min-height: 90px; }
-
-  /* Buttons */
-  .btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-  .btn-primary { background: #1a1a2e; color: white; }
-  .btn-primary:hover { background: #2d2d4e; }
-  .btn-primary:disabled { background: #999; cursor: not-allowed; }
-  .btn-success { background: #cc0000; color: white; margin-top: 8px; }
-  .btn-success:hover { background: #aa0000; }
-  .btn-success:disabled { background: #999; cursor: not-allowed; }
-  .btn-outline { background: white; color: #1a1a2e; border: 1px solid #1a1a2e; margin-top: 6px; }
-  .btn-outline:hover { background: #f0f0f8; }
-
-  /* Status */
   .status { font-size: 12px; padding: 8px 10px; border-radius: 6px; margin-top: 8px; display: none; }
-  .status.loading { background: #fff8e6; color: #8a6000; }
-  .status.error { background: #fff0f0; color: #cc0000; }
-  .status.success { background: #f0fff4; color: #006622; }
+  .status.loading { background: #fff8e6; color: #8a6000; display: block; }
+  .status.error { background: #fff0f0; color: #cc0000; display: block; }
+  .status.success { background: #f0fff4; color: #006622; display: block; }
 
-  /* ── Viewer ── */
-  .viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+  .row label { flex: 1; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  .row .count { font-size: 11px; color: #999; }
+  .row input[type=text], .row input[type=number], .field { border: 1px solid #d0d0dc; border-radius: 5px; padding: 5px 7px; font-size: 13px; font-family: inherit; min-width: 0; }
+  .row input[type=text] { flex: 1; }
+  .row.active { background: #f0f4ff; border-radius: 6px; padding: 3px 6px; margin: 0 -6px; }
+  .hint { font-size: 11px; color: #888; line-height: 1.45; margin-top: 6px; }
+  .tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #eee; color: #555; white-space: nowrap; }
+  .tag.ok { background: #e3f6e8; color: #17692e; }
+  .tag.warn { background: #fff3d6; color: #8a6000; }
 
-  .viewer-toolbar { background: white; border-bottom: 1px solid #e0e0e8; padding: 10px 16px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-  .viewer-toolbar span { font-size: 12px; color: #666; margin-right: auto; }
-  .tool-btn { background: #f0f0f8; border: 1px solid #d0d0dc; border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
-  .tool-btn:hover { background: #e0e0ee; }
-  .tool-btn.active { background: #1a1a2e; color: white; border-color: #1a1a2e; }
+  .btn { padding: 7px 10px; border: 1px solid #1a1a2e; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; background: white; color: #1a1a2e; }
+  .btn:hover { background: #f0f0f8; }
+  .btn.primary { background: #1a1a2e; color: white; }
+  .btn.on { background: #cc0000; border-color: #cc0000; color: white; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .mini { border: none; background: none; cursor: pointer; font-size: 14px; color: #888; padding: 0 3px; }
+  .mini:hover { color: #cc0000; }
 
-  .viewer-area { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 24px; }
+  .viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+  .toolbar { background: white; border-bottom: 1px solid #e0e0e8; padding: 8px 14px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .toolbar .label { font-size: 12px; color: #666; margin-right: auto; }
+  .banner { display: none; background: #fff8e6; border-bottom: 1px solid #f0d080; padding: 7px 14px; font-size: 12px; color: #8a6000; }
+  .banner.visible { display: block; }
 
-  .svg-container { background: white; box-shadow: 0 2px 16px rgba(0,0,0,0.12); transform-origin: top center; transition: transform 0.2s; }
-  .svg-container svg { display: block; max-width: 100%; }
-
-  .placeholder { text-align: center; padding: 80px 40px; color: #999; }
-  .placeholder svg { margin-bottom: 16px; opacity: 0.3; }
-  .placeholder h3 { font-size: 16px; margin-bottom: 8px; color: #666; }
+  #stage { flex: 1; position: relative; background: #fff; overflow: hidden; touch-action: none; }
+  #stage.measuring { cursor: crosshair; }
+  #stage svg { width: 100%; height: 100%; display: block; user-select: none; }
+  .placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #999; text-align: center; padding: 40px; pointer-events: none; }
+  .placeholder h3 { font-size: 16px; color: #666; margin-bottom: 6px; }
   .placeholder p { font-size: 13px; line-height: 1.6; }
 
-  /* Compare toggle */
-  .compare-bar { display: none; background: #fff8e6; border-bottom: 1px solid #f0d080; padding: 8px 16px; font-size: 12px; color: #8a6000; align-items: center; gap: 10px; flex-shrink: 0; }
-  .compare-bar.visible { display: flex; }
-
-  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; }
+  /* Line weights are screen pixels (non-scaling) so hairlines stay visible at any zoom. */
+  #world path { vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+  #world .c-structure { stroke-width: var(--sw-structure, 1.6px); }
+  #world .c-detail { stroke-width: var(--sw-detail, 1px); }
+  #world .c-fine, #world .c-hatch { stroke-width: var(--sw-fine, 0.6px); }
+  #world .c-dashed { stroke-width: var(--sw-detail, 1px); }
+  #world .c-fills, #world .c-text { stroke: none; }
+  #world .note { fill: #1d4ed8; font-family: Arial, sans-serif; pointer-events: none; }
+  #hud { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: #444; background: rgba(255,255,255,.9); padding: 4px 8px; border-radius: 5px; border: 1px solid #e0e0e8; display: none; }
+  .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .cat-btn { text-align: left; padding: 6px 8px; border: 1px solid #d0d0dc; border-radius: 6px; background: white; font-size: 12px; cursor: pointer; line-height: 1.3; }
+  .cat-btn:hover { background: #f0f0f8; }
+  .cat-btn.on { border-color: #1d4ed8; background: #eaf0ff; }
+  .cat-btn small { display: block; color: #888; font-size: 10.5px; }
+  .sel-box { margin-top: 10px; padding: 10px; background: #f6f8ff; border: 1px solid #dbe4ff; border-radius: 8px; }
+  .sel-box .row input[type=number] { width: 70px; }
+  .stat { font-size: 11px; color: #555; margin-top: 3px; line-height: 1.4; }
+  .stat.bad { color: #b91c1c; font-weight: 600; }
+  .stat.warn { color: #b45309; font-weight: 600; }
+  .stat.ok { color: #17692e; }
+  .opt-row.active { background: #f0f4ff; border-radius: 6px; padding: 3px 6px; margin: 0 -6px; }
+  .pin-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; border-radius: 10px; background: #dc2626; color: #fff; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+  .pin-badge.resolved { background: #16a34a; }
+  .pin-item { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+  .pin-item:hover { background: #f4f4fa; }
+  .pin-item.sel { background: #eaf0ff; }
+  .pin-item span.t { flex: 1; line-height: 1.35; }
+  .thread { margin-top: 6px; font-size: 12px; }
+  .thread div { padding: 4px 0; border-top: 1px solid #e6e9f5; line-height: 1.4; }
+  .thread small { color: #999; display: block; font-size: 10.5px; }
+  textarea.field { width: 100%; min-height: 64px; resize: vertical; font-family: inherit; }
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+  table.cmp th, table.cmp td { text-align: right; padding: 3px 4px; border-bottom: 1px solid #eee; }
+  table.cmp th:first-child, table.cmp td:first-child { text-align: left; }
+  #chat { background: #fff; border-top: 1px solid #e0e0e8; padding: 8px 14px 10px; flex-shrink: 0; display: none; }
+  #chat.visible { display: block; }
+  #chat-log { max-height: 170px; overflow-y: auto; margin-bottom: 8px; font-size: 13px; }
+  .msg { padding: 6px 10px; border-radius: 8px; margin: 4px 0; line-height: 1.4; max-width: 92%; white-space: pre-wrap; }
+  .msg.user { background: #eaf0ff; margin-left: auto; }
+  .msg.ai { background: #f4f4fa; }
+  .msg.err { background: #fff0f0; color: #b91c1c; }
+  .msg .acts { margin-top: 6px; display: flex; gap: 6px; }
+  .msg .acts .btn { padding: 3px 8px; font-size: 11px; }
+  .chat-row { display: flex; gap: 6px; align-items: center; }
+  .chat-row #chat-input { flex: 1; min-width: 0; }
+  .chat-row select, .chat-row #ai-model { width: auto; max-width: 150px; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: -2px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
@@ -88,231 +117,1343 @@
 <header>
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>
   <h1>Architectural Plans Tool</h1>
-  <span>Upload · View · Modify · Export</span>
+  <span>Upload · Declutter · Measure</span>
 </header>
 
 <div class="main">
-
-  <!-- ── SIDEBAR ── -->
   <div class="sidebar">
 
-    <div class="sidebar-section">
-      <h2>1 · Upload Plan</h2>
-      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <p><strong>Click to upload</strong> or drag & drop<br>PDF architectural plan</p>
+    <div class="sec">
+      <h2>1 · Upload plan</h2>
+      <div class="upload-zone" id="upload-zone">
+        <strong>Click to upload</strong> or drag &amp; drop<br>PDF architectural plan
       </div>
-      <input type="file" id="file-input" accept=".pdf">
-      <div class="file-info" id="file-info">
-        <strong id="file-name"></strong>
-        <span id="file-status"></span>
-      </div>
+      <input type="file" id="file-input" accept=".pdf,application/pdf">
       <div class="status" id="upload-status"></div>
     </div>
 
-    <div class="sidebar-section">
-      <h2>2 · API Key (for AI changes)</h2>
-      <div class="input-row">
-        <label>OpenAI API Key</label>
-        <input type="password" id="api-key" placeholder="sk-proj-..." autocomplete="off">
-        <span style="font-size:11px;color:#999;margin-top:2px">Only used locally. Never stored on a server.</span>
+    <div class="sec" id="sec-pages" hidden>
+      <h2>Page</h2>
+      <div class="row"><select class="field" id="page-select" style="flex:1"></select></div>
+    </div>
+
+    <div class="sec" id="sec-views" hidden>
+      <h2>2 · Drawings on this sheet</h2>
+      <div id="views"></div>
+      <div class="hint">Each drawing has its own scale. Select one to set its scale below.</div>
+    </div>
+
+    <div class="sec" id="sec-layers" hidden>
+      <h2>3 · Declutter</h2>
+      <div class="btns" style="margin:0 0 8px"><button class="btn" id="preset-clean">Clean</button><button class="btn" id="preset-all">Everything</button></div>
+      <div id="layers"></div>
+    </div>
+
+    <div class="sec" id="sec-scale" hidden>
+      <h2>4 · Scale &amp; measure</h2>
+      <div class="row"><span>Active drawing:</span><strong id="active-name"></strong><span class="tag" id="active-tag"></span></div>
+      <div class="row">Sheet scale 1 : <input class="field" type="number" id="ratio" min="1" step="1" placeholder="50" style="width:70px"><button class="btn" id="apply-ratio">Set</button></div>
+      <div class="hint" id="paper-hint"></div>
+      <div class="btns">
+        <button class="btn" id="btn-measure">Measure (M)</button>
+        <button class="btn" id="btn-calibrate">Calibrate with known length (C)</button>
       </div>
-    </div>
-
-    <div class="sidebar-section">
-      <h2>3 · Describe Changes</h2>
-      <div class="input-row">
-        <label>What would you like to change?</label>
-        <textarea id="change-input" placeholder="e.g. Add a single-storey extension of 3m x 4m to the rear of the kitchen. Show it with red hatching as proposed new works."></textarea>
+      <div id="calib-form" hidden>
+        <div class="row" style="margin-top:8px">Real length <input class="field" type="number" id="calib-len" min="0" step="any" style="width:90px"> mm <button class="btn primary" id="calib-apply">Apply</button></div>
       </div>
-      <button class="btn btn-success" id="apply-btn" disabled onclick="applyChanges()">Apply Changes with AI</button>
-      <div class="status" id="change-status"></div>
+      <div class="hint" id="mode-hint">Measure: click two points (they snap to line ends and corners). Calibrate: click the two ends of something you know the size of, such as the scale bar or a dimensioned wall.</div>
+      <div id="measures" style="margin-top:8px"></div>
     </div>
 
-    <div class="sidebar-section">
-      <h2>4 · Export</h2>
-      <button class="btn btn-outline" id="dl-svg-btn" disabled onclick="downloadSVG()">Download SVG</button>
-      <button class="btn btn-outline" id="dl-pdf-btn" disabled onclick="downloadPDF()">Print / Save as PDF</button>
+    <div class="sec" id="sec-rooms" hidden>
+      <h2>5 · Rooms &amp; space</h2>
+      <div class="btns" style="margin-top:0"><button class="btn primary" id="btn-detect">Detect rooms</button><button class="btn" id="btn-room">Draw room (D)</button><button class="btn" id="dl-csv">Schedule CSV</button></div>
+      <div class="hint" id="room-hint">Draw a room by clicking its corners (they snap to the walls). Click the first corner again, press Enter or double-click to close it. Needs a scale.</div>
+      <div id="candidates"></div>
+      <div id="rooms" style="margin-top:8px"></div>
     </div>
 
+    <div class="sec" id="sec-furn" hidden>
+      <h2>6 · Furniture &amp; appliances</h2>
+      <div class="hint" style="margin:0 0 8px">Pick an item, then click where it goes. Drag to move, R to rotate, Delete to remove. The dashed zone in front is working / door clearance.</div>
+      <div id="catalogue" class="cat-grid"></div>
+      <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Add a custom item</summary>
+        <div class="row" style="margin-top:6px"><input class="field" type="text" id="c-name" placeholder="Name" maxlength="60" style="flex:1"></div>
+        <div class="row">W <input class="field" type="number" id="c-w" min="1" style="width:68px"> D <input class="field" type="number" id="c-d" min="1" style="width:68px"> Clear <input class="field" type="number" id="c-c" min="0" value="0" style="width:62px"> mm</div>
+        <div class="btns" style="margin-top:4px"><button class="btn" id="c-add">Add to catalogue</button></div>
+      </details>
+      <div id="selected-item"></div>
+    </div>
+
+    <div class="sec" id="sec-options" hidden>
+      <h2>7 · Options &amp; changes</h2>
+      <div class="hint" style="margin:0 0 8px">Each option is its own set of furniture, so you can try "stove left" against "stove right". Items start as <b>proposed</b>; accept or reject them.</div>
+      <div id="options"></div>
+      <div class="btns"><button class="btn" id="opt-new">New option</button><button class="btn" id="opt-dup">Duplicate</button></div>
+      <label class="row" style="margin-top:8px"><input type="checkbox" id="show-prop" checked> Show proposed items (untick = existing plan only)</label>
+      <label class="row"><input type="checkbox" id="show-rej"> Show rejected items</label>
+      <div id="changes" class="stat" style="margin-top:6px"></div>
+      <div id="opt-compare"></div>
+    </div>
+
+    <div class="sec" id="sec-review" hidden>
+      <h2>8 · Review pins &amp; comments</h2>
+      <div class="btns" style="margin-top:0"><button class="btn" id="btn-pin">Add pin (P)</button><select class="field" id="pin-filter"><option value="all">All</option><option value="open">Open</option><option value="resolved">Resolved</option></select></div>
+      <div class="hint" id="pin-hint">Pins from the PDF's own notes are imported automatically. Drag a pin to the spot it refers to.</div>
+      <div id="pins" style="margin-top:8px"></div>
+      <div id="pin-detail"></div>
+    </div>
+
+    <div class="sec" id="sec-export" hidden>
+      <h2>9 · Export</h2>
+      <div class="btns" style="margin-top:0"><button class="btn" id="dl-svg">Download clean SVG</button><button class="btn" id="dl-pdf">Original PDF</button></div>
+    </div>
   </div>
 
-  <!-- ── VIEWER ── -->
   <div class="viewer">
-
-    <div class="viewer-toolbar">
-      <span id="viewer-label">No plan loaded</span>
-      <button class="tool-btn" onclick="zoom(1.2)">＋ Zoom In</button>
-      <button class="tool-btn" onclick="zoom(0.8)">－ Zoom Out</button>
-      <button class="tool-btn" onclick="resetZoom()">Fit</button>
-      <button class="tool-btn active" id="view-toggle" onclick="toggleView()" style="display:none">Show Original</button>
+    <div class="toolbar">
+      <span class="label" id="viewer-label">No plan loaded</span>
+      <button class="btn" id="zoom-in">＋</button>
+      <button class="btn" id="zoom-out">－</button>
+      <button class="btn" id="fit">Fit (F)</button>
     </div>
-
-    <div class="compare-bar" id="compare-bar">
-      Viewing: <strong id="compare-label">Updated plan</strong> — toggle above to compare with original
+    <div class="banner" id="banner"></div>
+    <div id="stage">
+      <div class="placeholder" id="placeholder"><h3>No plan loaded</h3><p>Upload a vector PDF plan on the left.<br>It is converted into classified geometry you can declutter and measure.</p></div>
+      <svg id="svg" xmlns="http://www.w3.org/2000/svg" style="display:none"><g id="world"></g><g id="overlay"></g></svg>
+      <div id="hud"></div>
     </div>
-
-    <div class="viewer-area" id="viewer-area">
-      <div class="placeholder">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>
-        <h3>No plan loaded</h3>
-        <p>Upload a PDF architectural plan using the panel on the left.<br>The exact vector drawing will be extracted and displayed here.</p>
+    <div id="chat">
+      <div id="chat-log"></div>
+      <div class="chat-row">
+        <input class="field" type="text" id="chat-input" maxlength="2000" placeholder='Ask, e.g. "put the fridge against the left wall of the kitchen"'>
+        <button class="btn primary" id="chat-send">Send</button>
+        <select class="field" id="ai-provider" title="AI provider"></select>
+        <input class="field" type="text" id="ai-model" list="ai-model-list" placeholder="model (pick or type)" maxlength="80" title="Pick a model or type any model name"><datalist id="ai-model-list"></datalist>
       </div>
+      <div class="hint" id="ai-hint"></div>
     </div>
-
   </div>
 </div>
 
 <script>
-  let jobId = null;
-  let scale = 1;
-  let showingOriginal = false;
-  let hasUpdated = false;
+const SVGNS = 'http://www.w3.org/2000/svg';
+const PT_TO_MM = 25.4 / 72;
+const CAT_ORDER = ['fills', 'fine', 'hatch', 'dashed', 'detail', 'structure', 'text'];
+const CLEAN = { structure: 1, detail: 1, fills: 1, dashed: 1, hatch: 1, fine: 0, text: 0 };
 
-  const uploadZone = document.getElementById('upload-zone');
-  const fileInput  = document.getElementById('file-input');
+const $ = id => document.getElementById(id);
+// Standard sizes come from the backend (backend/catalogue.py) so the viewer and the AI agree.
+let CATALOGUE = [];
+const uid = () => 'x' + Math.random().toString(36).slice(2, 10);
 
-  // Drag and drop
-  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
-  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
-  uploadZone.addEventListener('drop', e => {
-    e.preventDefault();
-    uploadZone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+const stage = $('stage'), svg = $('svg'), world = $('world'), overlay = $('overlay');
+
+const st = {
+  jobId: null, filename: '', pages: [], page: 1, scene: null,
+  view: { k: 1, tx: 0, ty: 0 },
+  catOn: {}, viewOn: {}, notesOn: true, activeView: null,
+  mode: null,            // null | 'measure' | 'calibrate'
+  pending: [],           // points picked in the current mode
+  measures: [],          // { a, b, view }
+  calib: null,           // { a, b, view } awaiting a real length
+  snapGrid: null, hover: null,
+  rooms: [],             // { id, name, poly: [[x,y],...] }  (PDF points)
+  items: [],             // { id, kind, name, w, d, clear, x, y, rot }  (w/d/clear in mm, x/y in points)
+  customItems: [],       // user catalogue entries
+  selected: null,        // selected item id
+  placing: null, placeRot: 0, roomPts: [],
+  wallGrid: null, mass: null,
+  candidates: [],        // rooms found automatically, awaiting the user's choice
+  pins: [], selectedPin: null, pinFilter: 'all', notesImported: false,
+  options: [], activeOption: null, showProposals: true, showRejected: false,
+};
+
+// ── helpers ────────────────────────────────────────────────────────────────
+function el(name, attrs = {}, text) {
+  const e = document.createElementNS(SVGNS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+}
+function status(id, type, msg, spin) {
+  const s = $(id);
+  s.className = 'status ' + type;
+  s.textContent = '';
+  if (spin) { const sp = document.createElement('span'); sp.className = 'spinner'; s.appendChild(sp); }
+  s.appendChild(document.createTextNode(msg));
+}
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  let data = null;
+  try { data = await res.json(); } catch (_) {}
+  if (!res.ok) {
+    const d = data && data.detail;
+    const sug = data && data.scale_suggestion;
+    const extra = sug ? ` (the sheet says ${sug.text}${sug.page_matches_paper === false ? ", but the page isn't that paper size" : ''})` : '';
+    throw new Error((Array.isArray(d) ? d.map(x => x.msg || JSON.stringify(x)).join('; ') : d || `Request failed (${res.status})`) + extra);
+  }
+  return data;
+}
+function paperName(wPt, hPt) {
+  const w = wPt * PT_TO_MM, h = hPt * PT_TO_MM, lo = Math.min(w, h), hi = Math.max(w, h);
+  const sizes = { A0: [841, 1189], A1: [594, 841], A2: [420, 594], A3: [297, 420], A4: [210, 297] };
+  for (const n in sizes) if (Math.abs(lo - sizes[n][0]) < 4 && Math.abs(hi - sizes[n][1]) < 4) return n;
+  return null;
+}
+const viewData = id => st.scene && st.scene.views.find(v => v.id === id);
+function viewAt(x, y) {
+  const vs = (st.scene && st.scene.views) || [];
+  let best = null, bd = Infinity;
+  for (const v of vs) {
+    const [x0, y0, x1, y1] = v.bbox;
+    const d = Math.hypot(Math.max(x0 - x, 0, x - x1), Math.max(y0 - y, 0, y - y1));
+    if (d < bd) { bd = d; best = v; }
+  }
+  return best;
+}
+function fmtLen(mm) {
+  const r = Math.round(mm);
+  return r >= 1000 ? `${(mm / 1000).toFixed(2)} m (${r.toLocaleString()} mm)` : `${r.toLocaleString()} mm`;
+}
+function lengthLabel(a, b, v) {
+  const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+  if (v && v.mm_per_pt) return fmtLen(d * v.mm_per_pt);
+  return `${(d * PT_TO_MM).toFixed(1)} paper mm — set scale`;
+}
+
+// ── upload ─────────────────────────────────────────────────────────────────
+const zone = $('upload-zone'), fileInput = $('file-input');
+zone.onclick = () => fileInput.click();
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]); });
+fileInput.onchange = () => { if (fileInput.files[0]) upload(fileInput.files[0]); fileInput.value = ''; };
+
+async function upload(file) {
+  if (!file.name.toLowerCase().endsWith('.pdf')) return status('upload-status', 'error', 'Please upload a PDF file.');
+  status('upload-status', 'loading', 'Extracting geometry from PDF…', true);
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const data = await api('/api/upload', { method: 'POST', body: form });
+    st.jobId = data.job_id; st.filename = data.filename; st.pages = data.pages;
+    const sel = $('page-select');
+    sel.textContent = '';
+    for (const p of data.pages) {
+      const o = document.createElement('option');
+      o.value = p.page;
+      o.textContent = `Page ${p.page} — ${p.paths.toLocaleString()} paths, ${p.views} drawing${p.views === 1 ? '' : 's'}${p.kind === 'scan' ? ' (scan)' : ''}`;
+      sel.appendChild(o);
+    }
+    $('sec-pages').hidden = data.pages.length < 2;
+    status('upload-status', 'success', `Loaded ${data.filename}`);
+    await loadPage(1);
+  } catch (e) { status('upload-status', 'error', e.message); }
+}
+$('page-select').onchange = e => loadPage(+e.target.value);
+
+async function loadPage(n) {
+  st.page = n;
+  st.scene = await api(`/api/jobs/${st.jobId}/pages/${n}`);
+  const sv = st.scene.state || {};
+  st.rooms = (sv.rooms || []).map(r => ({ id: r.id, name: r.name, poly: r.poly.map(p => [p.x, p.y]) }));
+  st.items = (sv.items || []).map(i => ({ ...i }));
+  st.customItems = (sv.custom_items || []).map(i => ({ ...i }));
+  st.measures = (sv.measures || []).map(m => ({ a: [m.a.x, m.a.y], b: [m.b.x, m.b.y], view: null }));
+  for (const m of st.measures) m.view = viewAt(m.a[0], m.a[1]);
+  st.options = (sv.options || []).map(o => ({ ...o }));
+  if (!st.options.length) st.options = [{ id: 'o1', name: 'Option A' }];
+  st.activeOption = st.options.some(o => o.id === sv.active_option) ? sv.active_option : st.options[0].id;
+  for (const i of st.items) if (!st.options.some(o => o.id === i.option)) i.option = st.options[0].id;
+  st.pins = (sv.pins || []).map(q => ({ ...q, thread: (q.thread || []).map(c => ({ ...c })) }));
+  st.notesImported = !!sv.notes_imported; st.selectedPin = null; st.showProposals = true; st.showRejected = false;
+  $('show-prop').checked = true; $('show-rej').checked = false;
+  st.selected = null; st.pending = []; st.calib = null; st.roomPts = []; setMode(null);
+  chat.log = []; renderChat(); $('chat').classList.add('visible');
+  st.candidates = []; renderCandidates();
+  st.catOn = { ...CLEAN, text: 0 };
+  st.viewOn = {};
+  for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock';
+  st.activeView = (st.scene.views.find(v => v.kind === 'drawing') || st.scene.views[0] || {}).id || null;
+  st.notesOn = true;
+  buildSnapGrid(); buildWallGrid(); buildMass();
+  if (!st.notesImported) {
+    st.notesImported = true;
+    const imported = importNotes(st.scene.texts);
+    if (imported.length) { st.pins.push(...imported); st.notesOn = false; }   // the notes now live as pins
+    scheduleSave();
+  }
+  renderScene();
+  renderSidebar();
+  fit();
+  $('viewer-label').textContent = `${st.filename} · page ${n}`;
+  const b = $('banner');
+  if (st.scene.kind === 'scan') {
+    b.textContent = 'This page is a scan (no vector data). Showing a raster preview; you can still calibrate and measure. Automatic extraction for scans is planned.';
+    b.classList.add('visible');
+  } else b.classList.remove('visible');
+}
+
+// ── scene rendering ────────────────────────────────────────────────────────
+function renderScene() {
+  const sc = st.scene;
+  world.textContent = '';
+  $('placeholder').style.display = 'none';
+  svg.style.display = 'block';
+  if (sc.kind === 'scan') {
+    const im = el('image', { x: 0, y: 0, width: sc.width, height: sc.height, href: `/api/jobs/${st.jobId}/pages/${st.page}/preview.png?dpi=100` });
+    world.appendChild(im);
+  }
+  const groups = {};
+  for (const c of CAT_ORDER) {
+    const g = el('g', { id: 'cat-' + c });
+    groups[c] = g; world.appendChild(g);
+  }
+  for (const p of sc.paths) {
+    const e = el('path', { d: p.d });
+    e.setAttribute('class', `c-${p.cat}` + (p.v ? ` v-${p.v}` : ''));
+    if (p.s) e.setAttribute('stroke', p.s);
+    if (p.f) { e.setAttribute('fill', p.f); if (p.eo) e.setAttribute('fill-rule', 'evenodd'); } else e.setAttribute('fill', 'none');
+    if (p.da) e.setAttribute('stroke-dasharray', p.da.join(' '));
+    groups[p.cat].appendChild(e);
+  }
+  const notes = el('g', { id: 'notes' });
+  for (const t of sc.texts) {
+    notes.appendChild(el('text', { x: t.x, y: t.y, 'font-size': t.size, class: 'note' }, t.text));
+  }
+  world.appendChild(notes);
+  applyVisibility();
+  renderOverlay();
+}
+
+let viewStyle = null;
+function applyVisibility() {
+  for (const c of CAT_ORDER) {
+    const g = $('cat-' + c);
+    if (g) g.style.display = st.catOn[c] ? '' : 'none';
+  }
+  const n = $('notes'); if (n) n.style.display = st.notesOn ? '' : 'none';
+  if (!viewStyle) { viewStyle = document.createElement('style'); document.head.appendChild(viewStyle); }
+  viewStyle.textContent = Object.keys(st.viewOn).filter(id => !st.viewOn[id]).map(id => `#world .v-${id}{display:none}`).join('');
+}
+
+// ── sidebar ────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const sc = st.scene;
+  for (const id of ['sec-views', 'sec-layers', 'sec-scale', 'sec-rooms', 'sec-furn', 'sec-options', 'sec-review', 'sec-export']) $(id).hidden = false;
+  $('sec-views').hidden = sc.views.length === 0;
+
+  const vwrap = $('views'); vwrap.textContent = '';
+  for (const v of sc.views) {
+    const row = document.createElement('div');
+    row.className = 'row' + (v.id === st.activeView ? ' active' : '');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!st.viewOn[v.id];
+    cb.title = 'Show / hide';
+    cb.onchange = () => { st.viewOn[v.id] = cb.checked; applyVisibility(); };
+    const name = document.createElement('input'); name.type = 'text'; name.value = v.name; name.maxLength = 80;
+    name.onchange = async () => {
+      try { await api(`/api/jobs/${st.jobId}/pages/${st.page}/views/${v.id}`, jsonPut({ name: name.value })); v.name = name.value.trim() || v.name; renderSidebar(); }
+      catch (e) { status('upload-status', 'error', e.message); }
+    };
+    const tag = document.createElement('span'); tag.className = 'tag ' + (v.mm_per_pt ? 'ok' : 'warn');
+    tag.textContent = v.ratio ? `1:${v.ratio}` : v.mm_per_pt ? 'calibrated' : 'no scale';
+    const sel = document.createElement('button'); sel.className = 'mini'; sel.textContent = '◎'; sel.title = 'Make active (scale target)';
+    sel.onclick = () => { st.activeView = v.id; renderSidebar(); };
+    const zoom = document.createElement('button'); zoom.className = 'mini'; zoom.textContent = '⤢'; zoom.title = 'Zoom to this drawing';
+    zoom.onclick = () => { st.activeView = v.id; fitBox(v.bbox); renderSidebar(); };
+    row.append(cb, name, tag, sel, zoom);
+    vwrap.appendChild(row);
+  }
+
+  const lwrap = $('layers'); lwrap.textContent = '';
+  const addLayer = (label, count, on, set) => {
+    const row = document.createElement('div'); row.className = 'row';
+    const lab = document.createElement('label');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = on;
+    cb.onchange = () => { set(cb.checked); applyVisibility(); };
+    lab.append(cb, document.createTextNode(label));
+    const c = document.createElement('span'); c.className = 'count'; c.textContent = count.toLocaleString();
+    row.append(lab, c); lwrap.appendChild(row);
+  };
+  for (const cat of sc.categories) addLayer(cat.label, sc.counts[cat.id] || 0, !!st.catOn[cat.id], v => { st.catOn[cat.id] = v ? 1 : 0; });
+  addLayer('Live text / notes', sc.texts.length, st.notesOn, v => { st.notesOn = v; });
+
+  const av = viewData(st.activeView);
+  $('active-name').textContent = av ? av.name : 'whole page';
+  const tag = $('active-tag');
+  tag.className = 'tag ' + (av && av.mm_per_pt ? 'ok' : 'warn');
+  tag.textContent = !av ? 'n/a' : av.ratio ? `1:${av.ratio}` : av.mm_per_pt ? 'calibrated' : 'no scale';
+  $('ratio').value = av && av.ratio ? av.ratio : '';
+  const paper = paperName(sc.width, sc.height);
+  $('paper-hint').textContent = `Page is ${Math.round(sc.width * PT_TO_MM)} × ${Math.round(sc.height * PT_TO_MM)} mm${paper ? ' (' + paper + ')' : ''}. Entering a ratio is only right if the PDF was printed at full size (e.g. "1:50 @ A1" on an A1 page). Otherwise calibrate.`;
+  renderMeasures(); renderRooms(); renderCatalogue(); renderSelected(); renderOptions(); renderReview();
+}
+const ROOM_HINT = 'Draw a room by clicking its corners (they snap to the walls). Click the first corner again, press Enter or double-click to close it. Needs a scale.';
+const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+$('preset-clean').onclick = () => { st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
+$('preset-all').onclick = () => { for (const c of CAT_ORDER) st.catOn[c] = 1; for (const v of st.scene.views) st.viewOn[v.id] = true; applyVisibility(); renderSidebar(); };
+
+async function saveScale(body) {
+  const av = viewData(st.activeView);
+  if (!av) return status('upload-status', 'error', 'No drawing selected.');
+  try {
+    const r = await api(`/api/jobs/${st.jobId}/pages/${st.page}/views/${av.id}`, jsonPut(body));
+    av.mm_per_pt = r.mm_per_pt; av.ratio = r.ratio;
+    renderSidebar(); renderOverlay();
+  } catch (e) { status('upload-status', 'error', e.message); }
+}
+$('apply-ratio').onclick = () => { const r = parseFloat($('ratio').value); if (r > 0) saveScale({ ratio: r }); };
+
+// ── measuring ──────────────────────────────────────────────────────────────
+function setMode(m) {
+  st.mode = m; st.pending = []; st.hover = null;
+  $('btn-pin').classList.toggle('on', m === 'pin');
+  if (m !== 'place') st.placing = null;
+  if (m !== 'room') st.roomPts = [];
+  if (m !== 'place' && m !== 'room') $('room-hint').textContent = ROOM_HINT;
+  $('btn-room').classList.toggle('on', m === 'room');
+  if (m !== 'calibrate') { st.calib = null; $('calib-form').hidden = true; }
+  stage.classList.toggle('measuring', !!m);
+  $('btn-measure').classList.toggle('on', m === 'measure');
+  $('btn-calibrate').classList.toggle('on', m === 'calibrate');
+  $('mode-hint').textContent = m === 'measure' ? 'Click the first point, then the second. Esc to stop.'
+    : m === 'calibrate' ? 'Click both ends of a feature of known length. Esc to cancel.'
+    : 'Measure: click two points (they snap to line ends and corners). Calibrate: click the two ends of something you know the size of, such as the scale bar or a dimensioned wall.';
+  renderOverlay();
+}
+$('btn-measure').onclick = () => setMode(st.mode === 'measure' ? null : 'measure');
+$('btn-calibrate').onclick = () => setMode(st.mode === 'calibrate' ? null : 'calibrate');
+$('calib-apply').onclick = async () => {
+  const len = parseFloat($('calib-len').value);
+  if (!st.calib || !(len > 0)) return;
+  const d = Math.hypot(st.calib.a[0] - st.calib.b[0], st.calib.a[1] - st.calib.b[1]);
+  if (d < 0.5) return;
+  const target = st.calib.view;
+  if (target) st.activeView = target.id;
+  await saveScale({ mm_per_pt: len / d });
+  setMode(null);
+};
+
+function buildSnapGrid() {
+  const C = 20, grid = new Map(), s = st.scene.snaps;
+  for (let i = 0; i < s.length; i += 2) {
+    const key = Math.floor(s[i] / C) + ',' + Math.floor(s[i + 1] / C);
+    let a = grid.get(key); if (!a) grid.set(key, a = []);
+    a.push(i);
+  }
+  st.snapGrid = { C, grid };
+}
+function snap(x, y) {
+  const r = Math.min(10 / st.view.k, 40), { C, grid } = st.snapGrid, s = st.scene.snaps;
+  let best = null, bd = r * r;
+  for (let cx = Math.floor((x - r) / C); cx <= Math.floor((x + r) / C); cx++)
+    for (let cy = Math.floor((y - r) / C); cy <= Math.floor((y + r) / C); cy++) {
+      const a = grid.get(cx + ',' + cy); if (!a) continue;
+      for (const i of a) { const d = (s[i] - x) ** 2 + (s[i + 1] - y) ** 2; if (d < bd) { bd = d; best = [s[i], s[i + 1]]; } }
+    }
+  return best ? { p: best, snapped: true } : { p: [x, y], snapped: false };
+}
+
+function renderOverlay() {
+  overlay.textContent = '';
+  const k = st.view.k, fs = 12 / k;
+  buildExtras(overlay, k);
+  const draw = (a, b, color, label) => {
+    overlay.appendChild(el('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: color, 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
+    for (const p of [a, b]) overlay.appendChild(el('circle', { cx: p[0], cy: p[1], r: 3.5 / k, fill: color }));
+    if (label) {
+      const t = el('text', { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 - 6 / k, 'font-size': fs, 'text-anchor': 'middle', fill: color, 'font-family': 'Arial,sans-serif', 'font-weight': 700, stroke: '#fff', 'stroke-width': 3 / k, 'paint-order': 'stroke' }, label);
+      overlay.appendChild(t);
+    }
+  };
+  if (st.mode === 'room' && st.roomPts.length) {
+    const pts = st.roomPts.concat(st.hover ? [st.hover] : []);
+    overlay.appendChild(el('polyline', { points: pts.map(q => q.join(',')).join(' '), fill: 'none', stroke: '#059669', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
+    for (const q of st.roomPts) overlay.appendChild(el('circle', { cx: q[0], cy: q[1], r: 3.5 / k, fill: '#059669' }));
+  }
+  for (const m of st.measures) draw(m.a, m.b, '#cc0000', lengthLabel(m.a, m.b, m.view));
+  if (st.calib) draw(st.calib.a, st.calib.b, '#0a7d3b', 'calibration line');
+  if (st.pending.length === 1) {
+    const a = st.pending[0], b = st.hover;
+    overlay.appendChild(el('circle', { cx: a[0], cy: a[1], r: 4 / k, fill: '#cc0000' }));
+    if (b) draw(a, b, '#cc0000', lengthLabel(a, b, viewAt(a[0], a[1])));
+  } else if (st.hover) {
+    overlay.appendChild(el('circle', { cx: st.hover[0], cy: st.hover[1], r: 5 / k, fill: 'none', stroke: '#cc0000', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
+  }
+}
+function renderMeasures() {
+  const w = $('measures'); w.textContent = '';
+  st.measures.forEach((m, i) => {
+    const row = document.createElement('div'); row.className = 'row';
+    const t = document.createElement('span'); t.style.flex = 1; t.textContent = `${i + 1}. ${lengthLabel(m.a, m.b, m.view)}`;
+    const x = document.createElement('button'); x.className = 'mini'; x.textContent = '✕';
+    x.onclick = () => { st.measures.splice(i, 1); renderMeasures(); renderOverlay(); scheduleSave(); };
+    row.append(t, x); w.appendChild(row);
   });
-  fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+}
+function onPick(p) {
+  if (st.mode === 'room') return roomPick(p);
+  st.pending.push(p);
+  if (st.pending.length < 2) return renderOverlay();
+  const [a, b] = st.pending; st.pending = [];
+  const view = viewAt(a[0], a[1]);
+  if (st.mode === 'measure') { st.measures.push({ a, b, view }); renderMeasures(); scheduleSave(); }
+  else if (st.mode === 'calibrate') { st.calib = { a, b, view }; $('calib-form').hidden = false; $('calib-len').focus(); }
+  renderOverlay();
+}
 
-  async function handleFile(file) {
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      showStatus('upload-status', 'error', 'Please upload a PDF file.');
+// ── geometry helpers ───────────────────────────────────────────────────────
+const mmPerPtAt = (x, y) => { const v = viewAt(x, y); return v && v.mm_per_pt ? v.mm_per_pt : null; };
+const rot2 = (px, py, deg) => { const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return [px * c - py * s, px * s + py * c]; };
+function pointInPoly(x, y, P) {
+  let inside = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const [xi, yi] = P[i], [xj, yj] = P[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function polyArea(P) { let a = 0; for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length]; a += x1 * y2 - x2 * y1; } return Math.abs(a) / 2; }
+function centroid(P) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length], f = x1 * y2 - x2 * y1; a += f; cx += (x1 + x2) * f; cy += (y1 + y2) * f; }
+  if (Math.abs(a) < 1e-6) return [P.reduce((s, q) => s + q[0], 0) / P.length, P.reduce((s, q) => s + q[1], 0) / P.length];
+  return [cx / (3 * a), cy / (3 * a)];
+}
+function segSeg(ax, ay, bx, by, cx, cy, dx, dy) {
+  const o = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+  const d1 = o(ax, ay, bx, by, cx, cy), d2 = o(ax, ay, bx, by, dx, dy), d3 = o(cx, cy, dx, dy, ax, ay), d4 = o(cx, cy, dx, dy, bx, by);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+function segHitsPoly(x1, y1, x2, y2, P) {
+  if (pointInPoly(x1, y1, P) || pointInPoly(x2, y2, P)) return true;
+  for (let i = 0; i < P.length; i++) { const [a, b] = P[i], [c, d] = P[(i + 1) % P.length]; if (segSeg(x1, y1, x2, y2, a, b, c, d)) return true; }
+  return false;
+}
+function polyIntersects(A, B) {   // convex polygons, separating-axis test
+  for (const P of [A, B]) for (let i = 0; i < P.length; i++) {
+    const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length], nx = y1 - y2, ny = x2 - x1;
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const [x, y] of A) { const d = x * nx + y * ny; if (d < a0) a0 = d; if (d > a1) a1 = d; }
+    for (const [x, y] of B) { const d = x * nx + y * ny; if (d < b0) b0 = d; if (d > b1) b1 = d; }
+    if (a1 < b0 || b1 < a0) return false;
+  }
+  return true;
+}
+function buildWallGrid() {
+  const C = 40, grid = new Map(), w = st.scene.walls || [];
+  for (let i = 0; i < w.length; i += 4) {
+    const x0 = Math.floor(Math.min(w[i], w[i + 2]) / C), x1 = Math.floor(Math.max(w[i], w[i + 2]) / C);
+    const y0 = Math.floor(Math.min(w[i + 1], w[i + 3]) / C), y1 = Math.floor(Math.max(w[i + 1], w[i + 3]) / C);
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 3000) continue;
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) {
+      const key = cx + ',' + cy; let a = grid.get(key); if (!a) grid.set(key, a = []); a.push(i);
+    }
+  }
+  st.wallGrid = { C, grid };
+}
+function buildMass() {
+  const m = st.scene.mass || { cell: 8, cells: [] };
+  st.mass = { cell: m.cell, set: new Set() };
+  for (let i = 0; i < m.cells.length; i += 2) st.mass.set.add(m.cells[i] + ',' + m.cells[i + 1]);
+}
+function massHit(P) {   // hatched wall bands count as solid
+  if (!st.mass || !st.mass.set.size) return false;
+  const c = st.mass.cell, xs = P.map(q => q[0]), ys = P.map(q => q[1]);
+  for (let cx = Math.floor(Math.min(...xs) / c); cx <= Math.floor(Math.max(...xs) / c); cx++)
+    for (let cy = Math.floor(Math.min(...ys) / c); cy <= Math.floor(Math.max(...ys) / c); cy++)
+      if (st.mass.set.has(cx + ',' + cy) && polyIntersects(P, [[cx * c, cy * c], [(cx + 1) * c, cy * c], [(cx + 1) * c, (cy + 1) * c], [cx * c, (cy + 1) * c]])) return true;
+  return false;
+}
+function wallsHit(P) {
+  if (!st.wallGrid) return false;
+  if (massHit(P)) return true;
+  const { C, grid } = st.wallGrid, w = st.scene.walls || [], seen = new Set();
+  const xs = P.map(q => q[0]), ys = P.map(q => q[1]);
+  for (let cx = Math.floor(Math.min(...xs) / C); cx <= Math.floor(Math.max(...xs) / C); cx++)
+    for (let cy = Math.floor(Math.min(...ys) / C); cy <= Math.floor(Math.max(...ys) / C); cy++) {
+      const a = grid.get(cx + ',' + cy); if (!a) continue;
+      for (const i of a) { if (seen.has(i)) continue; seen.add(i); if (segHitsPoly(w[i], w[i + 1], w[i + 2], w[i + 3], P)) return true; }
+    }
+  return false;
+}
+
+// ── furniture ──────────────────────────────────────────────────────────────
+const optItems = () => st.items.filter(i => i.option === st.activeOption);
+const liveItems = () => optItems().filter(i => i.status !== 'rejected');
+const shownItems = () => st.showProposals ? optItems().filter(i => i.status !== 'rejected' || st.showRejected) : [];
+// Local frame: x across the width, y front-to-back, front is +y. Rotation is clockwise on screen.
+function itemGeom(it) {
+  const s = mmPerPtAt(it.x, it.y); if (!s) return null;
+  const hw = it.w / 2 / s, hd = it.d / 2 / s, cl = it.clear / s, t = 10 / s;   // t: tolerance so flush placement is not a clash
+  const mk = pts => pts.map(([px, py]) => { const [rx, ry] = rot2(px, py, it.rot || 0); return [it.x + rx, it.y + ry]; });
+  return {
+    s, body: mk([[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]),
+    zone: cl > 0 ? mk([[-hw, hd], [hw, hd], [hw, hd + cl], [-hw, hd + cl]]) : null,
+    front: mk([[-hw, hd], [hw, hd]]),
+    testBody: mk([[-hw + t, -hd + t], [hw - t, -hd + t], [hw - t, hd - t], [-hw + t, hd - t]]),
+    testZone: cl > t * 2 ? mk([[-hw + t, hd + t], [hw - t, hd + t], [hw - t, hd + cl], [-hw + t, hd + cl]]) : null,
+  };
+}
+function clashOf(it, g, pool) {
+  if (!g) return { hard: false, warn: false };
+  const others = (pool || liveItems()).filter(o => o.id !== it.id).map(itemGeom).filter(Boolean);
+  const hard = wallsHit(g.testBody) || others.some(o => polyIntersects(g.testBody, o.testBody));
+  const warn = !!g.testZone && (wallsHit(g.testZone) || others.some(o => polyIntersects(g.testZone, o.testBody)));
+  return { hard, warn };
+}
+function hitItem(x, y) {
+  const arr = shownItems();
+  for (let i = arr.length - 1; i >= 0; i--) { const g = itemGeom(arr[i]); if (g && pointInPoly(x, y, g.body)) return arr[i]; }
+  return null;
+}
+function haloText(x, y, size, fill, weight, text) {
+  return el('text', { x, y, 'font-size': size, 'text-anchor': 'middle', fill, 'font-family': 'Arial,sans-serif', 'font-weight': weight, stroke: '#fff', 'stroke-width': size / 4, 'paint-order': 'stroke', 'pointer-events': 'none' }, text);
+}
+function drawItem(g, it, k, selected, ghost) {
+  const geo = itemGeom(it);
+  if (!geo) return;
+  const rejected = it.status === 'rejected', pending = it.status === 'pending' && !ghost;
+  const c = rejected ? { hard: false, warn: false } : clashOf(it, geo);
+  const color = rejected ? '#6b7280' : c.hard ? '#dc2626' : c.warn ? '#d97706' : '#1d4ed8';
+  const poly = P => P.map(q => q.join(',')).join(' ');
+  const base = ghost ? 0.7 : rejected ? 0.4 : 1;
+  if (geo.zone && !rejected) g.appendChild(el('polygon', { points: poly(geo.zone), fill: c.warn ? 'rgba(217,119,6,.22)' : 'rgba(29,78,216,.06)', stroke: c.warn ? '#d97706' : '#1d4ed8', 'stroke-width': 1, 'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke', opacity: ghost ? 0.6 : 1 }));
+  const body = el('polygon', { points: poly(geo.body), fill: rejected ? 'rgba(107,114,128,.12)' : c.hard ? 'rgba(220,38,38,.28)' : 'rgba(29,78,216,.22)', stroke: color, 'stroke-width': selected ? 2.6 : 1.5, 'vector-effect': 'non-scaling-stroke', opacity: base });
+  if (pending || rejected) body.setAttribute('stroke-dasharray', '7 4');
+  g.appendChild(body);
+  g.appendChild(el('line', { x1: geo.front[0][0], y1: geo.front[0][1], x2: geo.front[1][0], y2: geo.front[1][1], stroke: color, 'stroke-width': 3.5, 'vector-effect': 'non-scaling-stroke', opacity: base }));
+  const fs = 10 / k;
+  g.appendChild(haloText(it.x, it.y - fs * 0.1, fs, rejected ? '#6b7280' : '#1e3a8a', 700, (it.status === 'accepted' ? '✓ ' : it.source === 'ai' && it.status === 'pending' ? '✦ ' : '') + it.name));
+  g.appendChild(haloText(it.x, it.y + fs * 1.1, fs * 0.9, rejected ? '#6b7280' : '#1e3a8a', 400, `${Math.round(it.w)}×${Math.round(it.d)}`));
+}
+function handlePos(it, geo) {   // world position of the four edge handles
+  const s = geo.s, hw = it.w / 2 / s, hd = it.d / 2 / s;
+  const mk = (px, py) => { const [rx, ry] = rot2(px, py, it.rot || 0); return [it.x + rx, it.y + ry]; };
+  return { e: mk(hw, 0), w: mk(-hw, 0), n: mk(0, -hd), s: mk(0, hd) };
+}
+function hitHandle(it, wx, wy) {
+  const geo = itemGeom(it); if (!geo) return null;
+  const hp = handlePos(it, geo);
+  for (const side in hp) if (Math.hypot(hp[side][0] - wx, hp[side][1] - wy) * st.view.k <= 9) return side;
+  return null;
+}
+const CURSORS = { e: 'ew-resize', w: 'ew-resize', n: 'ns-resize', s: 'ns-resize' };
+function resizeFrom(it, it0, side, wx, wy) {   // opposite edge stays fixed, so blocks can be pushed against walls
+  const s = mmPerPtAt(it0.x, it0.y); if (!s) return;
+  const [lx, ly] = rot2(wx - it0.x, wy - it0.y, -(it0.rot || 0));
+  const hw0 = it0.w / 2 / s, hd0 = it0.d / 2 / s;
+  const roundMm = mm => Math.max(50, Math.round(mm / 10) * 10);
+  let cx = 0, cy = 0;
+  if (side === 'e' || side === 'w') {
+    const nw = roundMm((side === 'e' ? lx + hw0 : hw0 - lx) * s) / s;
+    cx = side === 'e' ? -hw0 + nw / 2 : hw0 - nw / 2; it.w = Math.round(nw * s);
+  } else {
+    const nd = roundMm((side === 's' ? ly + hd0 : hd0 - ly) * s) / s;
+    cy = side === 's' ? -hd0 + nd / 2 : hd0 - nd / 2; it.d = Math.round(nd * s);
+  }
+  const [dx, dy] = rot2(cx, cy, it0.rot || 0);
+  it.x = it0.x + dx; it.y = it0.y + dy;
+}
+function hitPin(wx, wy) {   // nearest pin within reach, so stacked pins can still be picked individually
+  let best = null, bd = 11;
+  for (const q of st.pins) { const d = Math.hypot(q.x - wx, q.y - wy) * st.view.k; if (pinVisible(q) && d <= bd) { bd = d; best = q; } }
+  return best;
+}
+const pinVisible = q => st.pinFilter === 'all' || q.status === st.pinFilter;
+function drawPins(g, k) {
+  st.pins.forEach((q, i) => {
+    if (!pinVisible(q)) return;
+    const sel = q.id === st.selectedPin;
+    g.appendChild(el('circle', { cx: q.x, cy: q.y, r: 9 / k, fill: q.status === 'open' ? '#dc2626' : '#16a34a', stroke: sel ? '#111827' : '#fff', 'stroke-width': sel ? 3 : 1.5, 'vector-effect': 'non-scaling-stroke' }));
+    g.appendChild(el('text', { x: q.x, y: q.y + 3.5 / k, 'font-size': 10 / k, 'text-anchor': 'middle', fill: '#fff', 'font-family': 'Arial,sans-serif', 'font-weight': 700, 'pointer-events': 'none' }, String(i + 1)));
+  });
+}
+function buildExtras(g, k) {
+  const fs = 11 / k;
+  for (const r of st.rooms) {
+    g.appendChild(el('polygon', { points: r.poly.map(q => q.join(',')).join(' '), fill: 'rgba(5,150,105,.09)', stroke: '#059669', 'stroke-width': 1.2, 'stroke-dasharray': '6 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
+    const c = centroid(r.poly), m = roomMetrics(r);
+    g.appendChild(haloText(c[0], c[1] - fs * 0.2, fs * 1.2, '#065f46', 700, r.name || 'Room'));
+    g.appendChild(haloText(c[0], c[1] + fs * 1.2, fs, '#065f46', 400, m.area == null ? 'set scale' : `${m.area.toFixed(1)} m²`));
+  }
+  for (const c of st.candidates) {
+    g.appendChild(el('polygon', { points: c.poly.map(q => q.join(',')).join(' '), fill: c.selected ? 'rgba(13,148,136,.20)' : 'rgba(13,148,136,.06)', stroke: '#0d9488', 'stroke-width': c.selected ? 2 : 1, 'stroke-dasharray': c.boundary === 'estimated' ? '3 4' : '8 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
+    const ct = centroid(c.poly), cf = 11 / k;
+    g.appendChild(haloText(ct[0], ct[1] - cf * 0.2, cf * 1.1, '#115e59', 700, (c.selected ? '' : '○ ') + (c.name || 'Room?')));
+    g.appendChild(haloText(ct[0], ct[1] + cf * 1.2, cf, '#115e59', 400, `${c.area_m2.toFixed(1)} m²` + (c.boundary === 'estimated' ? ' · estimated edge' : '')));
+  }
+  for (const it of shownItems()) drawItem(g, it, k, it.id === st.selected, false);
+  for (const it of shownItems()) {      // a pending change links back to the item it would replace
+    const old = it.replaces && st.items.find(i => i.id === it.replaces);
+    if (old && shownItems().includes(old)) g.appendChild(el('line', { x1: old.x, y1: old.y, x2: it.x, y2: it.y, stroke: '#7c3aed', 'stroke-width': 1.5, 'stroke-dasharray': '3 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
+  }
+  const sel = st.items.find(i => i.id === st.selected);
+  if (sel && !st.mode && g === overlay && shownItems().includes(sel)) {
+    const geo = itemGeom(sel);
+    if (geo) {
+      const hp = handlePos(sel, geo), sz = 8 / k;
+      for (const side in hp) g.appendChild(el('rect', { x: hp[side][0] - sz / 2, y: hp[side][1] - sz / 2, width: sz, height: sz, fill: '#fff', stroke: '#1d4ed8', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke', style: 'cursor:' + CURSORS[side] }));
+    }
+  }
+  if (st.mode === 'place' && st.placing && st.hover) drawItem(g, { ...st.placing, id: 'ghost', status: 'accepted', x: st.hover[0], y: st.hover[1], rot: st.placeRot || 0 }, k, false, true);
+  drawPins(g, k);
+}
+
+function placeAt(x, y) {
+  const s = mmPerPtAt(x, y);
+  if (!s) { $('room-hint').textContent = 'Set the scale for this drawing first (section 4), then place items.'; return; }
+  const it = { id: uid(), kind: st.placing.kind, name: st.placing.name, w: st.placing.w, d: st.placing.d, clear: st.placing.clear, option: st.activeOption, status: 'pending', x, y, rot: st.placeRot || 0 };
+  st.items.push(it);
+  setMode(null);
+  selectItem(it.id);
+  scheduleSave(); renderRooms();
+}
+function selectItem(id) { st.selected = id; if (id) st.selectedPin = null; renderSelected(); renderReview(); renderOverlay(); }
+function rotateSelected() { const it = st.items.find(i => i.id === st.selected); if (!it) return; it.rot = ((it.rot || 0) + 90) % 360; scheduleSave(); renderSelected(); renderOverlay(); }
+function deleteSelected() { st.items = st.items.filter(i => i.id !== st.selected); st.selected = null; scheduleSave(); renderRooms(); renderSelected(); renderOverlay(); }
+function nudge(it, key, mm) {
+  const s = mmPerPtAt(it.x, it.y); if (!s) return;
+  const d = mm / s;
+  if (key === 'ArrowLeft') it.x -= d; else if (key === 'ArrowRight') it.x += d; else if (key === 'ArrowUp') it.y -= d; else if (key === 'ArrowDown') it.y += d; else return;
+  scheduleSave(); renderRooms(); renderSelected(); renderOverlay();
+}
+
+function renderCatalogue() {
+  const w = $('catalogue'); w.textContent = '';
+  const all = CATALOGUE.concat(st.customItems.map(c => ({ ...c, custom: true })));
+  for (const c of all) {
+    const b = document.createElement('button'); b.className = 'cat-btn' + (st.placing && st.placing.name === c.name && st.placing.w === c.w ? ' on' : '');
+    b.append(document.createTextNode(c.name));
+    const sm = document.createElement('small'); sm.textContent = `${c.w}×${c.d} mm` + (c.custom ? ' · custom' : ''); b.appendChild(sm);
+    b.onclick = () => {
+      if (!mmPerPtAt(...centreOfView())) { $('room-hint').textContent = 'Set the scale for this drawing first (section 4), then place items.'; return; }
+      st.placeRot = 0; setMode('place'); st.placing = c;
+      $('room-hint').textContent = `Placing ${c.name}: click on the plan. R rotates, Esc cancels.`;
+      renderCatalogue();
+    };
+    if (c.custom) {
+      const rm = document.createElement('span'); rm.textContent = ' ✕'; rm.title = 'Remove this custom preset'; rm.style.cssText = 'float:right;color:#999;cursor:pointer';
+      rm.onclick = e => { e.stopPropagation(); st.customItems = st.customItems.filter(x => x !== st.customItems.find(y => y.name === c.name && y.w === c.w)); scheduleSave(); renderCatalogue(); };
+      b.appendChild(rm);
+    }
+    w.appendChild(b);
+  }
+}
+function centreOfView() { const v = viewData(st.activeView) || st.scene.views[0]; return v ? [(v.bbox[0] + v.bbox[2]) / 2, (v.bbox[1] + v.bbox[3]) / 2] : [st.scene.width / 2, st.scene.height / 2]; }
+$('c-add').onclick = () => {
+  const name = $('c-name').value.trim(), w = parseFloat($('c-w').value), d = parseFloat($('c-d').value), clear = parseFloat($('c-c').value) || 0;
+  if (!name || !(w > 0) || !(d > 0)) return;
+  st.customItems.push({ kind: 'custom', name, w, d, clear }); scheduleSave(); renderCatalogue();
+  $('c-name').value = ''; $('c-w').value = ''; $('c-d').value = '';
+};
+
+function renderSelected() {
+  const box = $('selected-item'); box.textContent = '';
+  const it = st.items.find(i => i.id === st.selected);
+  if (!it) return;
+  const wrap = document.createElement('div'); wrap.className = 'sel-box';
+  const title = document.createElement('div'); title.className = 'hint'; title.style.margin = '0 0 6px';
+  title.textContent = 'Resize: drag the white handles on the block, or type exact sizes.';
+  wrap.appendChild(title);
+  if (it.source === 'ai') {
+    const why = document.createElement('div'); why.className = 'stat'; why.style.cssText = 'color:#6d28d9;margin-bottom:6px';
+    why.textContent = '✦ Proposed by the assistant' + (it.note ? ': ' + it.note : '') + (it.replaces ? ' (replaces an existing item)' : '');
+    wrap.appendChild(why);
+  }
+  const field = (label, val, set, type = 'number') => {
+    const row = document.createElement('div'); row.className = 'row';
+    const l = document.createElement('span'); l.textContent = label; l.style.width = '64px';
+    const i = document.createElement('input'); i.className = 'field'; i.type = type; i.value = val; if (type === 'number') i.min = 0;
+    i.onchange = () => { set(i.value); scheduleSave(); renderRooms(); renderOverlay(); renderSelected(); renderOptions(); };
+    row.append(l, i); wrap.appendChild(row);
+  };
+  field('Name', it.name, v => { it.name = v.slice(0, 80) || it.name; }, 'text');
+  field('Width mm', Math.round(it.w), v => { if (+v > 0) it.w = +v; });
+  field('Depth mm', Math.round(it.d), v => { if (+v > 0) it.d = +v; });
+  field('Clear mm', Math.round(it.clear), v => { if (+v >= 0) it.clear = +v; });
+  const g = itemGeom(it), c = clashOf(it, g);
+  const stat = document.createElement('div');
+  stat.className = 'stat ' + (c.hard ? 'bad' : c.warn ? 'warn' : 'ok');
+  stat.textContent = !g ? 'Set the scale for this drawing.' : c.hard ? 'Clashes with a wall or another item.' : c.warn ? 'Fits, but the front clearance is blocked.' : 'Fits, with clearance.';
+  wrap.appendChild(stat);
+  const state = document.createElement('div'); state.className = 'stat'; state.textContent = 'Status: ' + it.status; wrap.appendChild(state);
+  const btn = (label, fn, cls = 'btn') => { const b = document.createElement('button'); b.className = cls; b.textContent = label; b.onclick = fn; return b; };
+  const setStatus = v => () => { if (v === 'accepted') acceptItem(it); else it.status = v; scheduleSave(); renderSelected(); renderRooms(); renderOptions(); renderOverlay(); };
+  const r1 = document.createElement('div'); r1.className = 'btns';
+  r1.append(btn('Accept ✓', setStatus('accepted')), btn('Reject ✕', setStatus('rejected')), btn('Reset', setStatus('pending')));
+  const r2 = document.createElement('div'); r2.className = 'btns';
+  r2.append(btn('Rotate 90° (R)', rotateSelected), btn('Delete', deleteSelected),
+    btn('Save size as preset', () => { st.customItems.push({ kind: 'custom', name: it.name, w: Math.round(it.w), d: Math.round(it.d), clear: Math.round(it.clear) }); scheduleSave(); renderCatalogue(); }));
+  wrap.append(r1, r2);
+  box.appendChild(wrap);
+}
+
+// ── rooms ──────────────────────────────────────────────────────────────────
+function roomMetrics(r) {
+  const c = centroid(r.poly), s = mmPerPtAt(c[0], c[1]);
+  if (!s) return { area: null, perim: null, furn: 0, free: null, n: 0 };
+  const area = polyArea(r.poly) * s * s / 1e6;
+  let perim = 0; for (let i = 0; i < r.poly.length; i++) { const a = r.poly[i], b = r.poly[(i + 1) % r.poly.length]; perim += Math.hypot(a[0] - b[0], a[1] - b[1]); }
+  const inside = liveItems().filter(i => pointInPoly(i.x, i.y, r.poly));
+  const furn = inside.reduce((t, i) => t + i.w * i.d / 1e6, 0);
+  return { area, perim: perim * s / 1000, furn, free: area - furn, n: inside.length };
+}
+function roomPick(p) {
+  const first = st.roomPts[0];
+  if (first && st.roomPts.length >= 3 && Math.hypot(p[0] - first[0], p[1] - first[1]) * st.view.k < 12) return closeRoom();
+  st.roomPts.push(p); renderOverlay();
+}
+function closeRoom() {
+  if (st.roomPts.length < 3) return;
+  const c = centroid(st.roomPts);
+  if (!mmPerPtAt(c[0], c[1])) { $('room-hint').textContent = 'Set the scale for this drawing first (section 4) so the room area is real.'; }
+  st.rooms.push({ id: uid(), name: `Room ${st.rooms.length + 1}`, poly: st.roomPts.slice() });
+  setMode(null); scheduleSave(); renderRooms(); renderOverlay();
+}
+$('btn-room').onclick = () => { setMode(st.mode === 'room' ? null : 'room'); if (st.mode === 'room') $('room-hint').textContent = 'Click the room corners. Click the first corner again, press Enter or double-click to finish. Esc cancels.'; };
+function renderRooms() {
+  const w = $('rooms'); w.textContent = '';
+  if (!st.rooms.length) return;
+  let totA = 0, totF = 0, anyNoScale = false;
+  for (const r of st.rooms) {
+    const m = roomMetrics(r);
+    const row = document.createElement('div'); row.className = 'row';
+    const name = document.createElement('input'); name.type = 'text'; name.value = r.name; name.maxLength = 80;
+    name.onchange = () => { r.name = name.value.trim() || r.name; scheduleSave(); renderOverlay(); };
+    const zoom = document.createElement('button'); zoom.className = 'mini'; zoom.textContent = '⤢'; zoom.title = 'Zoom to room';
+    zoom.onclick = () => { const xs = r.poly.map(q => q[0]), ys = r.poly.map(q => q[1]); fitBox([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]); };
+    const del = document.createElement('button'); del.className = 'mini'; del.textContent = '✕'; del.title = 'Delete room';
+    del.onclick = () => { st.rooms = st.rooms.filter(x => x !== r); scheduleSave(); renderRooms(); renderOverlay(); };
+    row.append(name, zoom, del); w.appendChild(row);
+    const stat = document.createElement('div'); stat.className = 'stat';
+    if (m.area == null) { stat.textContent = 'Set the scale to get area.'; anyNoScale = true; }
+    else { stat.textContent = `${m.area.toFixed(1)} m² · perimeter ${m.perim.toFixed(1)} m · furniture ${m.furn.toFixed(1)} m² (${m.n}) · free ${m.free.toFixed(1)} m²`; totA += m.area; totF += m.free; }
+    w.appendChild(stat);
+  }
+  if (!anyNoScale && st.rooms.length > 1) { const t = document.createElement('div'); t.className = 'stat'; t.style.marginTop = '6px'; t.style.fontWeight = '700'; t.textContent = `Total ${totA.toFixed(1)} m² · free ${totF.toFixed(1)} m²`; w.appendChild(t); }
+}
+$('dl-csv').onclick = () => {
+  const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+  const optName = id => (st.options.find(o => o.id === id) || {}).name || '';
+  const lines = [[`Room (free area is for ${optName(st.activeOption)})`, 'Area m2', 'Perimeter m', 'Furniture m2', 'Free m2', 'Items'].map(q).join(',')];
+  for (const r of st.rooms) { const m = roomMetrics(r); lines.push([r.name, m.area == null ? '' : m.area.toFixed(2), m.perim == null ? '' : m.perim.toFixed(2), m.furn.toFixed(2), m.free == null ? '' : m.free.toFixed(2), m.n].map(q).join(',')); }
+  lines.push('', ['Item', 'Width mm', 'Depth mm', 'Room', 'Option', 'Status'].map(q).join(','));
+  for (const i of st.items) { const room = st.rooms.find(r => pointInPoly(i.x, i.y, r.poly)); lines.push([i.name, Math.round(i.w), Math.round(i.d), room ? room.name : '', optName(i.option), i.status].map(q).join(',')); }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = (st.filename.replace(/\.pdf$/i, '') || 'plan') + '-schedule.csv';
+  a.click(); URL.revokeObjectURL(a.href);
+};
+
+
+// ── review pins ────────────────────────────────────────────────────────────
+function importNotes(texts) {
+  // Lines that end in a trailing space continue on the next line; merge those into one note.
+  const lines = texts.slice().sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+  const groups = [];
+  for (const t of lines) {
+    const g = groups.find(g => g.open && Math.abs(g.x0 - t.bbox[0]) <= 4 && t.bbox[1] - g.lastY > 0 && t.bbox[1] - g.lastY <= t.size * 2.2);
+    if (g) { g.parts.push(t.text); g.lastY = t.bbox[1]; g.open = !!t.wrap; }
+    else groups.push({ parts: [t.text], x0: t.bbox[0], y0: t.bbox[1], y1: t.bbox[3], lastY: t.bbox[1], open: !!t.wrap });
+  }
+  const isNote = t => t.length >= 6;   // skip stray tick labels and similar
+  return groups.map(g => ({ id: uid(), x: g.x0 - 10, y: (g.y0 + g.y1) / 2, text: g.parts.join(' '), status: 'open', source: 'pdf', created: Date.now() / 1000, thread: [] }))
+    .filter(q => isNote(q.text));
+}
+function addPin(x, y) {
+  const q = { id: uid(), x, y, text: '', status: 'open', source: 'user', created: Date.now() / 1000, thread: [] };
+  st.pins.push(q); setMode(null); scheduleSave(); selectPin(q.id, true);
+}
+function selectPin(id, focus) {
+  st.selectedPin = id; if (id) st.selected = null;
+  renderSelected(); renderReview(focus); renderOverlay();
+}
+function panTo(x, y) {
+  const r = svg.getBoundingClientRect(), k = Math.max(st.view.k, 0.6);
+  st.view = { k, tx: r.width / 2 - x * k, ty: r.height / 2 - y * k }; applyView();
+}
+$('btn-pin').onclick = () => { setMode(st.mode === 'pin' ? null : 'pin'); if (st.mode === 'pin') $('pin-hint').textContent = 'Click on the plan where the pin goes. Esc cancels.'; };
+$('pin-filter').onchange = e => { st.pinFilter = e.target.value; renderReview(); renderOverlay(); };
+function renderReview(focusText) {
+  $('pin-hint').textContent = st.mode === 'pin' ? 'Click on the plan where the pin goes. Esc cancels.' : "Pins from the PDF's own notes are imported automatically. Drag a pin to the spot it refers to.";
+  const list = $('pins'); list.textContent = '';
+  const open = st.pins.filter(q => q.status === 'open').length;
+  st.pins.forEach((q, i) => {
+    if (!pinVisible(q)) return;
+    const row = document.createElement('div'); row.className = 'pin-item' + (q.id === st.selectedPin ? ' sel' : '');
+    const b = document.createElement('span'); b.className = 'pin-badge' + (q.status === 'resolved' ? ' resolved' : ''); b.textContent = i + 1;
+    const t = document.createElement('span'); t.className = 't'; t.textContent = q.text ? (q.text.length > 90 ? q.text.slice(0, 90) + '…' : q.text) : '(empty pin)';
+    row.append(b, t);
+    row.onclick = () => { selectPin(q.id); panTo(q.x, q.y); };
+    list.appendChild(row);
+  });
+  if (!st.pins.length) { const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'No pins yet.'; list.appendChild(h); }
+  else { const h = document.createElement('div'); h.className = 'stat'; h.textContent = `${open} open · ${st.pins.length - open} resolved`; list.appendChild(h); }
+
+  const box = $('pin-detail'); box.textContent = '';
+  const q = st.pins.find(p => p.id === st.selectedPin);
+  if (!q) return;
+  const wrap = document.createElement('div'); wrap.className = 'sel-box';
+  const ta = document.createElement('textarea'); ta.className = 'field'; ta.value = q.text; ta.maxLength = 4000; ta.placeholder = 'Describe the question or issue…';
+  ta.onchange = () => { q.text = ta.value; scheduleSave(); renderReview(); };
+  wrap.appendChild(ta);
+  const meta = document.createElement('div'); meta.className = 'stat'; meta.textContent = (q.source === 'pdf' ? 'Imported from the PDF · ' : q.source === 'ai' ? 'Added by the assistant · ' : 'Added by you · ') + q.status; wrap.appendChild(meta);
+  const th = document.createElement('div'); th.className = 'thread';
+  for (const c of q.thread) { const d = document.createElement('div'); d.textContent = c.text; const sm = document.createElement('small'); sm.textContent = c.ts ? new Date(c.ts * 1000).toLocaleString() : ''; d.appendChild(sm); th.appendChild(d); }
+  wrap.appendChild(th);
+  const reply = document.createElement('input'); reply.className = 'field'; reply.type = 'text'; reply.placeholder = 'Reply…'; reply.maxLength = 4000; reply.style.cssText = 'width:100%;margin-top:6px';
+  const addReply = () => { const v = reply.value.trim(); if (!v) return; q.thread.push({ text: v, ts: Date.now() / 1000 }); scheduleSave(); renderReview(); };
+  reply.onkeydown = e => { if (e.key === 'Enter') addReply(); e.stopPropagation(); };
+  wrap.appendChild(reply);
+  const btns = document.createElement('div'); btns.className = 'btns';
+  const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = label; b.onclick = fn; return b; };
+  btns.append(mk('Reply', addReply),
+    mk(q.status === 'open' ? 'Resolve ✓' : 'Reopen', () => { q.status = q.status === 'open' ? 'resolved' : 'open'; scheduleSave(); renderReview(); renderOverlay(); }),
+    mk('Delete', () => { st.pins = st.pins.filter(p => p !== q); st.selectedPin = null; scheduleSave(); renderReview(); renderOverlay(); }));
+  wrap.appendChild(btns);
+  box.appendChild(wrap);
+  if (focusText) ta.focus();
+}
+
+// ── options and changes ────────────────────────────────────────────────────
+function optionStats(optId) {
+  const items = st.items.filter(i => i.option === optId && i.status !== 'rejected');
+  const clashes = items.filter(i => { const g = itemGeom(i); return g && clashOf(i, g, items).hard; }).length;
+  const area = items.reduce((t, i) => t + i.w * i.d / 1e6, 0);
+  let free = 0, tot = 0, ok = st.rooms.length > 0;
+  for (const r of st.rooms) {
+    const c = centroid(r.poly), s = mmPerPtAt(c[0], c[1]); if (!s) { ok = false; continue; }
+    const a = polyArea(r.poly) * s * s / 1e6, f = items.filter(i => pointInPoly(i.x, i.y, r.poly)).reduce((t, i) => t + i.w * i.d / 1e6, 0);
+    tot += a; free += a - f;
+  }
+  return { n: items.length, clashes, area, free: ok ? free : null };
+}
+function switchOption(id) { st.activeOption = id; st.selected = null; scheduleSave(); renderSelected(); renderRooms(); renderOptions(); renderOverlay(); }
+function newOption(clone) {
+  const id = uid(), n = st.options.length + 1;
+  const src = st.activeOption;
+  st.options.push({ id, name: clone ? (st.options.find(o => o.id === src).name + ' copy') : `Option ${String.fromCharCode(64 + Math.min(n, 26))}` });
+  if (clone) for (const i of st.items.filter(i => i.option === src)) st.items.push({ ...i, id: uid(), option: id });
+  switchOption(id);
+}
+$('opt-new').onclick = () => newOption(false);
+$('opt-dup').onclick = () => newOption(true);
+$('show-prop').onchange = e => { st.showProposals = e.target.checked; renderOverlay(); };
+$('show-rej').onchange = e => { st.showRejected = e.target.checked; renderOverlay(); };
+function renderOptions() {
+  const w = $('options'); w.textContent = '';
+  for (const o of st.options) {
+    const row = document.createElement('div'); row.className = 'row opt-row' + (o.id === st.activeOption ? ' active' : '');
+    const rd = document.createElement('input'); rd.type = 'radio'; rd.name = 'opt'; rd.checked = o.id === st.activeOption; rd.onchange = () => switchOption(o.id);
+    const nm = document.createElement('input'); nm.type = 'text'; nm.value = o.name; nm.maxLength = 80;
+    nm.onchange = () => { o.name = nm.value.trim() || o.name; scheduleSave(); renderOptions(); };
+    row.append(rd, nm);
+    if (st.options.length > 1) {
+      const del = document.createElement('button'); del.className = 'mini'; del.textContent = '✕'; del.title = 'Delete this option and its items';
+      del.onclick = () => {
+        if (!confirm(`Delete "${o.name}" and its furniture?`)) return;
+        st.items = st.items.filter(i => i.option !== o.id); st.options = st.options.filter(x => x !== o);
+        if (st.activeOption === o.id) st.activeOption = st.options[0].id;
+        st.selected = null; scheduleSave(); renderSelected(); renderRooms(); renderOptions(); renderOverlay();
+      };
+      row.appendChild(del);
+    }
+    w.appendChild(row);
+  }
+  const mine = optItems(), c = { pending: 0, accepted: 0, rejected: 0 };
+  for (const i of mine) c[i.status]++;
+  $('changes').textContent = `This option: ${c.pending} proposed · ${c.accepted} accepted · ${c.rejected} rejected`;
+  if (c.pending) {
+    const b = document.createElement('button'); b.className = 'btn'; b.style.marginLeft = '8px'; b.textContent = 'Accept all proposed';
+    b.onclick = () => { for (const i of mine) if (i.status === 'pending') acceptItem(i); scheduleSave(); renderOptions(); renderSelected(); renderOverlay(); };
+    $('changes').appendChild(b);
+  }
+  const cmp = $('opt-compare'); cmp.textContent = '';
+  if (st.options.length > 1) {
+    const t = document.createElement('table'); t.className = 'cmp';
+    const head = t.insertRow(); for (const h of ['Option', 'Items', 'Furn. m²', 'Free m²', 'Clashes']) { const th = document.createElement('th'); th.textContent = h; head.appendChild(th); }
+    for (const o of st.options) {
+      const s = optionStats(o.id), r = t.insertRow();
+      const vals = [o.name, s.n, s.area.toFixed(1), s.free == null ? '–' : s.free.toFixed(1), s.clashes];
+      vals.forEach((v, i) => { const td = r.insertCell(); td.textContent = v; if (i === 4 && s.clashes) td.style.color = '#b91c1c'; if (o.id === st.activeOption) td.style.fontWeight = '700'; });
+    }
+    cmp.appendChild(t);
+  }
+}
+
+
+function acceptItem(it) {
+  it.status = 'accepted'; if (typeof renderChat === 'function') setTimeout(renderChat, 0);
+  if (it.replaces) {                       // accepting a change retires the item it supersedes
+    const old = st.items.find(i => i.id === it.replaces);
+    if (old) old.status = 'rejected';
+    it.replaces = '';
+  }
+}
+
+// ── AI assistant ───────────────────────────────────────────────────────────
+const chat = { log: [], busy: false, providers: [], modelNote: '' };
+const jsonPost = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+function addMsg(kind, text, rec) {
+  chat.log.push({ kind, text, rec });
+  renderChat();
+}
+function renderChat() {
+  const log = $('chat-log'); log.textContent = '';
+  for (const m of chat.log) {
+    const d = document.createElement('div'); d.className = 'msg ' + m.kind;
+    d.appendChild(document.createTextNode(m.text));
+    if (m.rec && (m.rec.addedItems.length || m.rec.updatedItems.length || m.rec.movedPins.length || m.rec.addedPins.length || m.rec.replies.length)) {
+      const acts = document.createElement('div'); acts.className = 'acts';
+      const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = label; b.onclick = fn; return b; };
+      const pend = recStillPending(m.rec);
+      if (m.rec.done) { const t = document.createElement('span'); t.className = 'hint'; t.textContent = m.rec.done; acts.appendChild(t); }
+      else if (!pend) { const t = document.createElement('span'); t.className = 'hint'; t.textContent = 'Already decided in the item list'; acts.appendChild(t); }
+      else {
+        if (m.rec.addedItems.length || m.rec.updatedItems.length) acts.appendChild(mk('Accept', () => { acceptFromRec(m.rec); m.rec.done = 'Accepted'; renderChat(); }));
+        acts.appendChild(mk('Undo', () => { undoRec(m.rec); m.rec.done = 'Undone'; renderChat(); }));
+      }
+      d.appendChild(acts);
+    }
+    log.appendChild(d);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+function recStillPending(rec) {   // once an item has been accepted or rejected elsewhere, undoing it here could lose data
+  return rec.addedItems.concat(rec.updatedItems.map(u => u.id)).every(id => { const it = st.items.find(i => i.id === id); return !it || it.status === 'pending'; });
+}
+function applyOps(ops) {
+  const rec = { addedItems: [], updatedItems: [], movedPins: [], addedPins: [], replies: [] };
+  for (const op of ops) {
+    if (op.op === 'add_item') {
+      const it = { ...op.item }, ex = st.items.find(i => i.id === it.id);
+      if (ex) { rec.updatedItems.push({ id: ex.id, before: { ...ex } }); Object.assign(ex, it); }
+      else { st.items.push(it); rec.addedItems.push(it.id); }
+    } else if (op.op === 'add_pin') {
+      st.pins.push({ ...op.pin, created: Date.now() / 1000, thread: op.pin.thread || [] }); rec.addedPins.push(op.pin.id);
+    } else if (op.op === 'move_pin') {
+      const q = st.pins.find(p => p.id === op.id);
+      if (q) { rec.movedPins.push({ id: q.id, from: { x: q.x, y: q.y } }); q.x = op.x; q.y = op.y; }
+    } else if (op.op === 'reply_pin') {
+      const q = st.pins.find(p => p.id === op.id);
+      if (q) { q.thread.push({ text: op.text, ts: Date.now() / 1000 }); rec.replies.push({ id: q.id, text: op.text }); }
+    }
+  }
+  scheduleSave(); renderRooms(); renderOptions(); renderReview(); renderSelected(); renderOverlay();
+  return rec;
+}
+function acceptFromRec(rec) {
+  for (const id of rec.addedItems.concat(rec.updatedItems.map(u => u.id))) { const it = st.items.find(i => i.id === id); if (it && it.status === 'pending') acceptItem(it); }
+  scheduleSave(); renderRooms(); renderOptions(); renderSelected(); renderOverlay();
+}
+function undoRec(rec) {
+  st.items = st.items.filter(i => !rec.addedItems.includes(i.id));
+  for (const u of rec.updatedItems) { const it = st.items.find(i => i.id === u.id); if (it) Object.assign(it, u.before); }
+  st.pins = st.pins.filter(p => !rec.addedPins.includes(p.id));
+  for (const m of rec.movedPins) { const q = st.pins.find(p => p.id === m.id); if (q) { q.x = m.from.x; q.y = m.from.y; } }
+  for (const r of rec.replies) { const q = st.pins.find(p => p.id === r.id); if (q) { const i = q.thread.map(c => c.text).lastIndexOf(r.text); if (i >= 0) q.thread.splice(i, 1); } }
+  if (st.selected && !st.items.some(i => i.id === st.selected)) st.selected = null;
+  scheduleSave(); renderRooms(); renderOptions(); renderReview(); renderSelected(); renderOverlay();
+}
+async function sendChat() {
+  const input = $('chat-input'), prompt = input.value.trim();
+  if (!prompt || chat.busy || !st.jobId) return;
+  chat.busy = true; $('chat-send').disabled = true; input.value = '';
+  const history = chat.log.filter(m => m.kind !== 'err' && m.text !== 'Thinking…').slice(-6).map(m => ({ role: m.kind === 'user' ? 'user' : 'assistant', text: m.text.slice(0, 2000) }));
+  const job = st.jobId, page = st.page;
+  addMsg('user', prompt);
+  addMsg('ai', 'Thinking…');
+  const thinking = chat.log[chat.log.length - 1];
+  try {
+    const res = await api(`/api/jobs/${st.jobId}/pages/${st.page}/ai`, jsonPost({
+      prompt, provider: $('ai-provider').value || 'demo', model: $('ai-model').value.trim() || null, state: statePayload(), history,
+    }));
+    if (st.jobId !== job || st.page !== page) return;      // the user moved to another page: do not apply this answer here
+    chat.log.splice(chat.log.indexOf(thinking), 1);
+    const rec = applyOps(res.ops);
+    addMsg('ai', res.message, rec);
+    const first = st.items.find(i => i.id === rec.addedItems[0]);
+    if (first) { selectItem(first.id); panTo(first.x, first.y); }
+  } catch (e) {
+    if (st.jobId !== job || st.page !== page) return;
+    chat.log.splice(chat.log.indexOf(thinking), 1);
+    addMsg('err', e.message);
+  } finally { chat.busy = false; $('chat-send').disabled = false; input.focus(); }
+}
+$('chat-send').onclick = sendChat;
+$('chat-input').onkeydown = e => { if (e.key === 'Enter') sendChat(); e.stopPropagation(); };
+$('ai-provider').onchange = () => {
+  try { localStorage.setItem('ai-provider', $('ai-provider').value); } catch (_) {}
+  $('ai-model').value = '';
+  try { localStorage.removeItem('ai-model'); } catch (_) {}
+  loadModels(); updateAiHint();
+};
+async function loadModels() {
+  const id = $('ai-provider').value, list = $('ai-model-list');
+  list.textContent = '';
+  if (!id || id === 'demo') return;
+  try {
+    const r = await api(`/api/ai/providers/${encodeURIComponent(id)}/models`);
+    if ($('ai-provider').value !== id) return;
+    for (const m of r.models) { const o = document.createElement('option'); o.value = m; list.appendChild(o); }
+    chat.modelNote = r.note || '';
+    if (id === 'local' && r.live && !$('ai-model').value) $('ai-model').placeholder = r.models[0];
+    updateAiHint();
+  } catch (_) {}
+}
+$('ai-model').onchange = () => { try { localStorage.setItem('ai-model', $('ai-model').value); } catch (_) {} };
+function updateAiHint() {
+  const p = chat.providers.find(x => x.id === $('ai-provider').value);
+  $('ai-hint').textContent = !p ? '' : p.id === 'demo' ? 'Demo parser: understands simple phrases only. Pick a provider with a key for a real assistant.'
+    : p.id === 'local' ? (chat.modelNote || 'Local model: runs on this machine, no key needed. Pick a model your server has (it must support tool calling, e.g. Llama 3.1+).')
+    : !p.configured ? `Not configured: add the API key to backend/.env and restart.` : !p.sdk_installed ? 'SDK missing: pip install -r backend/requirements-ai.txt' : `Using ${p.label}. Proposals appear as pending items marked ✦.`;
+}
+async function initAi() {
+  try {
+    CATALOGUE = await api('/api/catalogue');
+    if (st.scene) renderCatalogue();
+  } catch (e) { status('upload-status', 'error', 'Could not load the catalogue: ' + e.message); }
+  try {
+    chat.providers = await api('/api/ai/providers');
+    const sel = $('ai-provider'); sel.textContent = '';
+    for (const p of chat.providers) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.label.split(' (')[0] + (p.configured ? '' : ' (no key)'); sel.appendChild(o); }
+    let saved = null; try { saved = localStorage.getItem('ai-provider'); } catch (_) {}
+    const best = chat.providers.find(p => p.id === saved) || chat.providers.find(p => p.configured && p.id !== 'demo') || chat.providers.find(p => p.id === 'demo');
+    if (best) sel.value = best.id;
+    try { $('ai-model').value = localStorage.getItem('ai-model') || ''; } catch (_) {}
+    updateAiHint(); loadModels();
+  } catch (_) { $('ai-hint').textContent = 'AI providers unavailable.'; }
+}
+initAi();
+
+
+// ── automatic room detection ───────────────────────────────────────────────
+$('btn-detect').onclick = detectRooms;
+async function detectRooms() {
+  if (!st.jobId || $('btn-detect').disabled) return;
+  const job = st.jobId, page = st.page, hint = $('room-hint');
+  $('btn-detect').disabled = true;
+  hint.textContent = 'Reading the drawing and finding rooms… (the first run reads the text and takes about 10 seconds)';
+  try {
+    const res = await api(`/api/jobs/${job}/pages/${page}/detect-rooms`, { method: 'POST' });
+    if (st.jobId !== job || st.page !== page) return;
+    st.candidates = res.rooms.map(r => ({ id: r.id, name: r.name || '', poly: r.poly.map(p => [p.x, p.y]), area_m2: r.area_m2, boundary: r.boundary, named: r.named, selected: !!r.default_selected }));
+    if (res.scale_applied) {
+      for (const v of st.scene.views) if (v.kind === 'drawing' && !v.mm_per_pt) { v.ratio = res.scale_applied.ratio; v.mm_per_pt = PT_TO_MM * res.scale_applied.ratio; }
+      renderSidebar();
+    }
+    const parts = [];
+    if (res.scale_applied) parts.push(`Scale ${res.scale_applied.text} read from the title block and applied.`);
+    parts.push(st.candidates.length ? `Found ${st.candidates.length} region(s). Tick the ones to keep, edit names, then add them.` : 'No rooms found.');
+    parts.push(...res.notes);
+    hint.textContent = parts.join(' ');
+    renderCandidates(); renderOverlay();
+    if (st.candidates.length) fit();
+  } catch (e) { hint.textContent = e.message; }
+  finally { $('btn-detect').disabled = false; }
+}
+function renderCandidates() {
+  const w = $('candidates'); w.textContent = '';
+  if (!st.candidates.length) return;
+  const head = document.createElement('div'); head.className = 'stat'; head.style.cssText = 'font-weight:700;margin-top:8px'; head.textContent = `Detected rooms (${st.candidates.filter(c => c.selected).length} of ${st.candidates.length} selected)`;
+  w.appendChild(head);
+  for (const c of st.candidates) {
+    const row = document.createElement('div'); row.className = 'row';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = c.selected;
+    cb.onchange = () => { c.selected = cb.checked; renderCandidates(); renderOverlay(); };
+    const name = document.createElement('input'); name.type = 'text'; name.value = c.name; name.placeholder = 'name?'; name.maxLength = 80;
+    name.onchange = () => { c.name = name.value.trim(); renderOverlay(); };
+    const meta = document.createElement('span'); meta.className = 'tag' + (c.boundary === 'estimated' ? ' warn' : ''); meta.textContent = `${c.area_m2.toFixed(1)} m²` + (c.boundary === 'estimated' ? ' ~' : '');
+    meta.title = c.boundary === 'estimated' ? 'Part of an open space: the edge between rooms is estimated. Check it.' : 'Bounded by walls';
+    const zoom = document.createElement('button'); zoom.className = 'mini'; zoom.textContent = '⤢'; zoom.title = 'Zoom to this region';
+    zoom.onclick = () => { const xs = c.poly.map(q => q[0]), ys = c.poly.map(q => q[1]); fitBox([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]); };
+    row.append(cb, name, meta, zoom); w.appendChild(row);
+  }
+  const btns = document.createElement('div'); btns.className = 'btns';
+  const mk = (label, fn, cls = 'btn') => { const b = document.createElement('button'); b.className = cls; b.textContent = label; b.onclick = fn; return b; };
+  btns.append(mk('Add selected as rooms', () => addCandidates(false), 'btn primary'), mk('Add all', () => addCandidates(true)), mk('Discard', () => { st.candidates = []; renderCandidates(); renderOverlay(); }));
+  w.appendChild(btns);
+  const note = document.createElement('div'); note.className = 'hint'; note.textContent = 'Click a dashed region on the plan to include or exclude it. "~" marks an estimated edge inside an open-plan space.';
+  w.appendChild(note);
+}
+function addCandidates(all) {
+  const chosen = st.candidates.filter(c => all || c.selected);
+  if (!chosen.length) return;
+  let n = st.rooms.length;
+  for (const c of chosen) st.rooms.push({ id: uid(), name: c.name || `Room ${++n}`, poly: c.poly.map(q => q.slice()) });
+  st.candidates = [];
+  scheduleSave(); renderCandidates(); renderRooms(); renderOptions(); renderOverlay();
+  $('room-hint').textContent = `Added ${chosen.length} room(s). Rename or delete any below.`;
+}
+
+// ── autosave ───────────────────────────────────────────────────────────────
+let saveTimer = null;
+function statePayload() {
+  const pt = q => ({ x: q[0], y: q[1] });
+  return {
+    pins: st.pins.map(q => ({ id: q.id, x: q.x, y: q.y, text: q.text, status: q.status, source: q.source, created: q.created || 0, thread: q.thread.map(c => ({ text: c.text, ts: c.ts || 0 })) })),
+    options: st.options.map(o => ({ id: o.id, name: o.name })),
+    active_option: st.activeOption || '',
+    notes_imported: st.notesImported,
+    rooms: st.rooms.map(r => ({ id: r.id, name: r.name, poly: r.poly.map(pt) })),
+    items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: i.w, d: i.d, clear: i.clear, option: i.option, status: i.status, source: i.source || 'user', note: i.note || '', replaces: i.replaces || '', x: i.x, y: i.y, rot: i.rot || 0 })),
+    measures: st.measures.map(m => ({ a: pt(m.a), b: pt(m.b) })),
+    custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: c.w, d: c.d, clear: c.clear })),
+  };
+}
+function scheduleSave() {
+  if (!st.jobId) return;
+  clearTimeout(saveTimer);
+  const job = st.jobId, page = st.page;
+  saveTimer = setTimeout(async () => {
+    try { await api(`/api/jobs/${job}/pages/${page}/state`, jsonPut(statePayload())); }
+    catch (e) { status('upload-status', 'error', 'Could not save: ' + e.message); }
+  }, 500);
+}
+
+// ── pan / zoom ─────────────────────────────────────────────────────────────
+function applyView() {
+  const { k, tx, ty } = st.view;
+  world.setAttribute('transform', `translate(${tx} ${ty}) scale(${k})`);
+  overlay.setAttribute('transform', `translate(${tx} ${ty}) scale(${k})`);
+  const root = document.documentElement.style;
+  root.setProperty('--sw-structure', Math.max(1, Math.min(0.72 * k * 2.2, 2.6)) + 'px');
+  root.setProperty('--sw-detail', Math.max(0.8, Math.min(0.36 * k * 2.2, 1.6)) + 'px');
+  root.setProperty('--sw-fine', Math.max(0.5, Math.min(0.12 * k * 2.2, 0.9)) + 'px');
+  renderOverlay();
+}
+function screenToWorld(cx, cy) {
+  const r = svg.getBoundingClientRect(), { k, tx, ty } = st.view;
+  return [(cx - r.left - tx) / k, (cy - r.top - ty) / k];
+}
+function fitBox(b) {
+  const r = svg.getBoundingClientRect();
+  const w = b[2] - b[0], h = b[3] - b[1], pad = 30;
+  const k = Math.min((r.width - 2 * pad) / w, (r.height - 2 * pad) / h);
+  st.view = { k, tx: (r.width - w * k) / 2 - b[0] * k, ty: (r.height - h * k) / 2 - b[1] * k };
+  applyView();
+}
+function visibleBox() {
+  const vs = st.scene.views.filter(v => st.viewOn[v.id] && v.kind === 'drawing');
+  if (!vs.length) return [0, 0, st.scene.width, st.scene.height];
+  return [Math.min(...vs.map(v => v.bbox[0])), Math.min(...vs.map(v => v.bbox[1])), Math.max(...vs.map(v => v.bbox[2])), Math.max(...vs.map(v => v.bbox[3]))];
+}
+function fit() { if (st.scene) fitBox(visibleBox()); }
+function zoomAt(f, cx, cy) {
+  const r = svg.getBoundingClientRect(); cx = cx ?? r.left + r.width / 2; cy = cy ?? r.top + r.height / 2;
+  const [wx, wy] = screenToWorld(cx, cy);
+  const k = Math.min(Math.max(st.view.k * f, 0.02), 200);
+  st.view = { k, tx: cx - r.left - wx * k, ty: cy - r.top - wy * k };
+  applyView();
+}
+$('zoom-in').onclick = () => zoomAt(1.4); $('zoom-out').onclick = () => zoomAt(1 / 1.4); $('fit').onclick = fit;
+
+svg.addEventListener('wheel', e => { if (!st.scene) return; e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY); }, { passive: false });
+let drag = null;
+svg.addEventListener('pointerdown', e => {
+  if (!st.scene) return;
+  svg.setPointerCapture(e.pointerId);
+  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null };
+  if (!st.mode) {
+    const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+    const sel = st.items.find(i => i.id === st.selected), side = sel && shownItems().includes(sel) ? hitHandle(sel, wx, wy) : null;
+    const pin = side ? null : hitPin(wx, wy);
+    const hit = side || pin ? null : hitItem(wx, wy);
+    if (side) drag.handle = { side, it: sel, it0: { ...sel } };
+    else if (pin) { drag.pin = { q: pin, ox: pin.x - wx, oy: pin.y - wy }; selectPin(pin.id); }
+    else if (hit) { drag.item = { it: hit, ox: hit.x - wx, oy: hit.y - wy }; selectItem(hit.id); }
+  }
+});
+svg.addEventListener('pointermove', e => {
+  if (!st.scene) return;
+  if (drag) {
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.hypot(dx, dy) > 4) drag.moved = true;
+    if (drag.handle) {
+      if (drag.moved) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); resizeFrom(drag.handle.it, drag.handle.it0, drag.handle.side, wx, wy); renderOverlay(); }
       return;
     }
-    showStatus('upload-status', 'loading', '<span class="spinner"></span>Extracting vector data from PDF...');
-    document.getElementById('file-info').style.display = 'block';
-    document.getElementById('file-name').textContent = file.name;
-    document.getElementById('file-status').textContent = 'Uploading...';
-
-    const form = new FormData();
-    form.append('file', file);
-
-    try {
-      const res = await fetch('/upload', { method: 'POST', body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Upload failed');
-
-      jobId = data.job_id;
-      document.getElementById('file-status').textContent = 'Extracted successfully';
-      showStatus('upload-status', 'success', 'Vector data extracted. Plan loaded below.');
-      document.getElementById('viewer-label').textContent = file.name;
-      document.getElementById('apply-btn').disabled = false;
-      document.getElementById('dl-svg-btn').disabled = false;
-      document.getElementById('dl-pdf-btn').disabled = false;
-      hasUpdated = false;
-      showingOriginal = false;
-      document.getElementById('view-toggle').style.display = 'none';
-      document.getElementById('compare-bar').classList.remove('visible');
-      await loadSVG(data.svg_url);
-    } catch(e) {
-      showStatus('upload-status', 'error', e.message);
-      document.getElementById('file-status').textContent = 'Failed';
+    if (drag.pin) {
+      if (drag.moved) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.pin.q.x = wx + drag.pin.ox; drag.pin.q.y = wy + drag.pin.oy; renderOverlay(); }
+      return;
     }
-  }
-
-  async function loadSVG(url) {
-    const area = document.getElementById('viewer-area');
-    area.innerHTML = '';
-    const frame = document.createElement('iframe');
-    frame.id = 'svg-frame';
-    frame.src = url + '?t=' + Date.now();
-    frame.style.cssText = 'width:100%;height:100%;border:none;background:white;';
-    area.appendChild(frame);
-    scale = 1;
-    currentUrl = url;
-  }
-
-  async function applyChanges() {
-    const desc = document.getElementById('change-input').value.trim();
-    const apiKey = document.getElementById('api-key').value.trim();
-    if (!desc) { showStatus('change-status', 'error', 'Please describe the changes you want.'); return; }
-    if (!jobId) { showStatus('change-status', 'error', 'Please upload a plan first.'); return; }
-
-    document.getElementById('apply-btn').disabled = true;
-    showStatus('change-status', 'loading', '<span class="spinner"></span>AI is applying your changes...');
-
-    try {
-      const res = await fetch('/apply-changes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: jobId, change_description: desc, api_key: apiKey })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to apply changes');
-
-      showStatus('change-status', 'success', 'Changes applied. Viewing updated plan.');
-      hasUpdated = true;
-      showingOriginal = false;
-      document.getElementById('view-toggle').style.display = 'inline-block';
-      document.getElementById('view-toggle').textContent = 'Show Original';
-      document.getElementById('compare-bar').classList.add('visible');
-      document.getElementById('compare-label').textContent = 'Updated plan';
-      await loadSVG(data.updated_svg_url);
-    } catch(e) {
-      showStatus('change-status', 'error', e.message);
-    } finally {
-      document.getElementById('apply-btn').disabled = false;
+    if (drag.item) {
+      if (drag.moved) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.item.it.x = wx + drag.item.ox; drag.item.it.y = wy + drag.item.oy; renderOverlay(); }
+      return;
     }
+    if (drag.moved) { st.view.tx = drag.tx + dx; st.view.ty = drag.ty + dy; applyView(); return; }
   }
+  const [x, y] = screenToWorld(e.clientX, e.clientY);
+  if (st.mode) { st.hover = st.mode === 'place' ? [x, y] : snap(x, y).p; renderOverlay(); }
+  const hud = $('hud'), v = viewAt(x, y);
+  hud.style.display = 'block';
+  hud.textContent = `x ${x.toFixed(1)}  y ${y.toFixed(1)} pt` + (v && v.mm_per_pt ? `  ·  ${fmtLen(x * v.mm_per_pt)} , ${fmtLen(y * v.mm_per_pt)} from page origin` : '');
+});
+svg.addEventListener('pointerup', e => {
+  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin); drag = null;
+  if (!st.scene) return;
+  if (dragOther) { if (wasDrag) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); } return; }
+  if (dragItem) { if (wasDrag) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); } return; }
+  if (wasDrag) return;
+  const [x, y] = screenToWorld(e.clientX, e.clientY);
+  if (!st.mode) {
+    const cand = st.candidates.find(c => pointInPoly(x, y, c.poly));
+    if (cand && !st.selected && !st.selectedPin) { cand.selected = !cand.selected; renderCandidates(); renderOverlay(); return; }
+    if (st.selected) selectItem(null);
+    if (st.selectedPin) selectPin(null);
+    return;
+  }
+  if (st.mode === 'place') return placeAt(x, y);
+  if (st.mode === 'pin') return addPin(x, y);
+  onPick(snap(x, y).p);
+});
+svg.addEventListener('dblclick', () => { if (st.mode === 'room') closeRoom(); });
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const sel = st.items.find(i => i.id === st.selected);
+  if (e.key === 'Escape') { if (st.mode) setMode(null); else selectItem(null); selectPin(null); }
+  else if (e.key === 'Enter' && st.mode === 'room') closeRoom();
+  else if ((e.key === 'd' || e.key === 'D') && st.scene) $('btn-room').click();
+  else if ((e.key === 'p' || e.key === 'P') && st.scene) $('btn-pin').click();
+  else if ((e.key === 'r' || e.key === 'R') && st.mode === 'place') { st.placeRot = ((st.placeRot || 0) + 90) % 360; renderOverlay(); }
+  else if ((e.key === 'r' || e.key === 'R') && sel) rotateSelected();
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) deleteSelected();
+  else if (sel && e.key.startsWith('Arrow')) { e.preventDefault(); nudge(sel, e.key, e.shiftKey ? 100 : 10); }
+  else if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey) $('btn-measure').click();
+  else if (e.key === 'c' || e.key === 'C') $('btn-calibrate').click();
+  else if (e.key === 'f' || e.key === 'F') fit();
+});
+window.addEventListener('resize', () => { if (st.scene) applyView(); });
 
-  function toggleView() {
-    if (!hasUpdated || !jobId) return;
-    showingOriginal = !showingOriginal;
-    const btn = document.getElementById('view-toggle');
-    const label = document.getElementById('compare-label');
-    if (showingOriginal) {
-      btn.textContent = 'Show Updated';
-      label.textContent = 'Original plan';
-      loadSVG(`/file/${jobId}/extracted.svg`);
-    } else {
-      btn.textContent = 'Show Original';
-      label.textContent = 'Updated plan';
-      loadSVG(`/file/${jobId}/updated.svg`);
-    }
+// ── export ─────────────────────────────────────────────────────────────────
+$('dl-pdf').onclick = () => { if (st.jobId) location.href = `/api/jobs/${st.jobId}/original.pdf`; };
+$('dl-svg').onclick = () => {
+  if (!st.scene) return;
+  const b = visibleBox(), pad = 20;
+  const clone = world.cloneNode(true);
+  clone.removeAttribute('transform'); clone.removeAttribute('id');
+  for (const c of CAT_ORDER) { const g = clone.querySelector('#cat-' + c); if (g && !st.catOn[c]) g.remove(); }
+  const n = clone.querySelector('#notes'); if (n && !st.notesOn) n.remove();
+  for (const id in st.viewOn) if (!st.viewOn[id]) clone.querySelectorAll('.v-' + id).forEach(x => x.remove());
+  const out = el('svg', { xmlns: SVGNS, viewBox: `${b[0] - pad} ${b[1] - pad} ${b[2] - b[0] + 2 * pad} ${b[3] - b[1] + 2 * pad}` });
+  out.appendChild(el('style', {}, 'path{fill:none;stroke-linecap:round;stroke-linejoin:round}.c-structure{stroke-width:.72}.c-detail,.c-dashed{stroke-width:.36}.c-fine,.c-hatch{stroke-width:.12}.c-fills,.c-text{stroke:none}.note{fill:#1d4ed8;font-family:Arial,sans-serif}'));
+  out.appendChild(clone);
+  const ov = el('g');
+  buildExtras(ov, 1);
+  for (const m of st.measures) {
+    ov.appendChild(el('line', { x1: m.a[0], y1: m.a[1], x2: m.b[0], y2: m.b[1], stroke: '#cc0000', 'stroke-width': 1 }));
+    ov.appendChild(el('text', { x: (m.a[0] + m.b[0]) / 2, y: (m.a[1] + m.b[1]) / 2 - 3, 'font-size': 9, 'text-anchor': 'middle', fill: '#cc0000', 'font-family': 'Arial,sans-serif' }, lengthLabel(m.a, m.b, m.view)));
   }
-
-  function downloadSVG() {
-    if (!jobId) return;
-    const url = hasUpdated && !showingOriginal
-      ? `/file/${jobId}/updated.svg`
-      : `/file/${jobId}/extracted.svg`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = hasUpdated ? 'updated_plan.svg' : 'extracted_plan.svg';
-    a.click();
-  }
-
-  function downloadPDF() {
-    window.print();
-  }
-
-  function zoom(factor) {
-    scale = Math.min(Math.max(scale * factor, 0.2), 5);
-    const c = document.getElementById('svg-container');
-    if (c) c.style.transform = `scale(${scale})`;
-  }
-
-  function resetZoom() {
-    scale = 1;
-    const c = document.getElementById('svg-container');
-    if (c) c.style.transform = 'scale(1)';
-  }
-
-  function showStatus(id, type, msg) {
-    const el = document.getElementById(id);
-    el.className = `status ${type}`;
-    el.innerHTML = msg;
-    el.style.display = 'block';
-  }
+  out.appendChild(ov);
+  const blob = new Blob([new XMLSerializer().serializeToString(out)], { type: 'image/svg+xml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (st.filename.replace(/\.pdf$/i, '') || 'plan') + '-clean.svg';
+  a.click(); URL.revokeObjectURL(a.href);
+};
 </script>
 </body>
 </html>

@@ -1,0 +1,4 @@
+# Install only the providers you use (each is imported lazily).
+anthropic
+openai
+google-genai

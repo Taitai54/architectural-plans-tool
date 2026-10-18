@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
 python-multipart
-openai
-python-dotenv
+pymupdf
+shapely
+numpy

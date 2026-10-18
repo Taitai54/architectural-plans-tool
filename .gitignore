@@ -1,3 +1,7 @@
 backend/.env
 backend/__pycache__/
 backend/outputs/
+.venv/
+.pytest_cache/
+__pycache__/
+.claude/worktrees/
