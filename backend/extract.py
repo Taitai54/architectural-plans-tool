@@ -34,6 +34,8 @@ LONG_LINE = 500.0          # datum/level lines longer than this don't define a v
 VIEW_TOL = 30.0            # gap (pt) below which heavy linework joins into one view
 CORNER_MARGIN = 120.0
 MAX_SNAPS = 60000
+MAX_WALL_SEGS = 40000
+MASS_CELL = 8.0            # hatched wall bands are exposed as occupied grid cells of this size (pt)
 
 
 def _hex(c) -> str | None:
@@ -162,6 +164,30 @@ def _classify_all(drawings: list[dict]) -> list[str]:
             w = d.get("width") or 0
             cats[i] = "structure" if w >= HEAVY_W else "detail" if w >= MEDIUM_W else "fine"
     return cats
+
+
+def _segments(d: dict):
+    """Straight edges of a path (curves are approximated by their chord)."""
+    for it in d["items"]:
+        k = it[0]
+        if k == "l":
+            yield it[1], it[2]
+        elif k == "c":
+            yield it[1], it[4]
+        elif k == "re":
+            r = it[1]
+            a, b = pymupdf.Point(r.x0, r.y0), pymupdf.Point(r.x1, r.y0)
+            c, e = pymupdf.Point(r.x1, r.y1), pymupdf.Point(r.x0, r.y1)
+            yield a, b
+            yield b, c
+            yield c, e
+            yield e, a
+        elif k == "qu":
+            q = it[1]
+            yield q.ul, q.ur
+            yield q.ur, q.lr
+            yield q.lr, q.ll
+            yield q.ll, q.ul
 
 
 def _snap_points(d: dict):
@@ -310,6 +336,8 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
 
     paths = []
     snaps: dict[tuple[int, int], tuple[float, float]] = {}
+    walls: list[float] = []
+    mass: set[tuple[int, int]] = set()
     counts = {k: 0 for k, _ in CATEGORIES}
     cats = _classify_all(drawings)
     for d, cat in zip(drawings, cats):
@@ -336,6 +364,14 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
         if dash:
             p["da"] = dash
         paths.append(p)
+        if cat == "hatch" and len(mass) < 60000:
+            for cx in range(int(r.x0 // MASS_CELL), int(r.x1 // MASS_CELL) + 1):
+                for cy in range(int(r.y0 // MASS_CELL), int(r.y1 // MASS_CELL) + 1):
+                    mass.add((cx, cy))
+        if cat == "structure" and len(walls) < MAX_WALL_SEGS * 4:
+            for a, b in _segments(d):
+                if abs(a.x - b.x) + abs(a.y - b.y) > 0.5:
+                    walls += [round(a.x, 1), round(a.y, 1), round(b.x, 1), round(b.y, 1)]
         if cat in ("structure", "detail") and len(snaps) < MAX_SNAPS:
             for pt in _snap_points(d):
                 snaps[(round(pt.x * 2), round(pt.y * 2))] = (round(pt.x, 1), round(pt.y, 1))
@@ -349,6 +385,8 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
         "paths": paths,
         "texts": texts,
         "snaps": [c for pt in snaps.values() for c in pt],
+        "walls": walls,
+        "mass": {"cell": MASS_CELL, "cells": [c for xy in sorted(mass) for c in xy]},
         "counts": counts,
         "n_chars": n_chars,
     }

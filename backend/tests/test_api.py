@@ -134,3 +134,35 @@ def test_rotated_page_is_normalised(client):
     assert (scene["width"], scene["height"]) == (842, 595)
     xs = [float(n) for p in scene["paths"] for n in p["d"].replace("M", " ").replace("L", " ").replace("H", " ").replace("V", " ").replace("Z", " ").split()]
     assert max(xs) <= 842
+
+
+def test_state_roundtrip_and_validation(client):
+    jid = upload(client, plan_pdf()).json()["job_id"]
+    url = f"/api/jobs/{jid}/pages/1/state"
+    assert client.get(f"/api/jobs/{jid}/pages/1").json()["state"]["rooms"] == []
+    state = {
+        "rooms": [{"id": "r1", "name": "Kitchen", "poly": [{"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 80}]}],
+        "items": [{"id": "i1", "kind": "fridge", "name": "Fridge", "w": 700, "d": 700, "clear": 900, "x": 50, "y": 40, "rot": 90}],
+        "measures": [{"a": {"x": 0, "y": 0}, "b": {"x": 10, "y": 0}}],
+        "custom_items": [],
+    }
+    assert client.put(url, json=state).status_code == 200
+    got = client.get(f"/api/jobs/{jid}/pages/1").json()["state"]
+    assert got["rooms"][0]["name"] == "Kitchen" and got["items"][0]["rot"] == 90
+    bad = dict(state, items=[dict(state["items"][0], w=-5)])
+    assert client.put(url, json=bad).status_code == 422
+    bad = dict(state, rooms=[dict(state["rooms"][0], poly=[{"x": 0, "y": 0}])])
+    assert client.put(url, json=bad).status_code == 422
+    assert client.put(f"/api/jobs/{jid}/pages/9/state", json=state).status_code == 404
+
+
+def test_walls_are_emitted(client):
+    jid = upload(client, plan_pdf()).json()["job_id"]
+    walls = client.get(f"/api/jobs/{jid}/pages/1").json()["walls"]
+    assert len(walls) >= 16 and len(walls) % 4 == 0  # the heavy rectangle's four edges
+
+
+def test_hatched_walls_are_exposed_as_mass(client):
+    jid = upload(client, plan_pdf()).json()["job_id"]
+    mass = client.get(f"/api/jobs/{jid}/pages/1").json()["mass"]
+    assert mass["cell"] > 0 and len(mass["cells"]) >= 4 and len(mass["cells"]) % 2 == 0

@@ -71,6 +71,17 @@
   #world .c-fills, #world .c-text { stroke: none; }
   #world .note { fill: #1d4ed8; font-family: Arial, sans-serif; pointer-events: none; }
   #hud { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: #444; background: rgba(255,255,255,.9); padding: 4px 8px; border-radius: 5px; border: 1px solid #e0e0e8; display: none; }
+  .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .cat-btn { text-align: left; padding: 6px 8px; border: 1px solid #d0d0dc; border-radius: 6px; background: white; font-size: 12px; cursor: pointer; line-height: 1.3; }
+  .cat-btn:hover { background: #f0f0f8; }
+  .cat-btn.on { border-color: #1d4ed8; background: #eaf0ff; }
+  .cat-btn small { display: block; color: #888; font-size: 10.5px; }
+  .sel-box { margin-top: 10px; padding: 10px; background: #f6f8ff; border: 1px solid #dbe4ff; border-radius: 8px; }
+  .sel-box .row input[type=number] { width: 70px; }
+  .stat { font-size: 11px; color: #555; margin-top: 3px; line-height: 1.4; }
+  .stat.bad { color: #b91c1c; font-weight: 600; }
+  .stat.warn { color: #b45309; font-weight: 600; }
+  .stat.ok { color: #17692e; }
   .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: -2px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -128,8 +139,27 @@
       <div id="measures" style="margin-top:8px"></div>
     </div>
 
+    <div class="sec" id="sec-rooms" hidden>
+      <h2>5 · Rooms &amp; space</h2>
+      <div class="btns" style="margin-top:0"><button class="btn" id="btn-room">Draw room (D)</button><button class="btn" id="dl-csv">Schedule CSV</button></div>
+      <div class="hint" id="room-hint">Draw a room by clicking its corners (they snap to the walls). Click the first corner again, press Enter or double-click to close it. Needs a scale.</div>
+      <div id="rooms" style="margin-top:8px"></div>
+    </div>
+
+    <div class="sec" id="sec-furn" hidden>
+      <h2>6 · Furniture &amp; appliances</h2>
+      <div class="hint" style="margin:0 0 8px">Pick an item, then click where it goes. Drag to move, R to rotate, Delete to remove. The dashed zone in front is working / door clearance.</div>
+      <div id="catalogue" class="cat-grid"></div>
+      <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Add a custom item</summary>
+        <div class="row" style="margin-top:6px"><input class="field" type="text" id="c-name" placeholder="Name" maxlength="60" style="flex:1"></div>
+        <div class="row">W <input class="field" type="number" id="c-w" min="1" style="width:68px"> D <input class="field" type="number" id="c-d" min="1" style="width:68px"> Clear <input class="field" type="number" id="c-c" min="0" value="0" style="width:62px"> mm</div>
+        <div class="btns" style="margin-top:4px"><button class="btn" id="c-add">Add to catalogue</button></div>
+      </details>
+      <div id="selected-item"></div>
+    </div>
+
     <div class="sec" id="sec-export" hidden>
-      <h2>5 · Export</h2>
+      <h2>7 · Export</h2>
       <div class="btns" style="margin-top:0"><button class="btn" id="dl-svg">Download clean SVG</button><button class="btn" id="dl-pdf">Original PDF</button></div>
     </div>
   </div>
@@ -157,6 +187,27 @@ const CAT_ORDER = ['fills', 'fine', 'hatch', 'dashed', 'detail', 'structure', 't
 const CLEAN = { structure: 1, detail: 1, fills: 1, dashed: 1, hatch: 1, fine: 0, text: 0 };
 
 const $ = id => document.getElementById(id);
+// Typical UK sizes in mm. w = across the front, d = front to back, clear = space needed in front.
+const CATALOGUE = [
+  { kind: 'fridge', name: 'Under-counter fridge', w: 600, d: 600, clear: 800 },
+  { kind: 'fridge', name: 'Tall fridge-freezer', w: 700, d: 700, clear: 900 },
+  { kind: 'fridge', name: 'American fridge-freezer', w: 910, d: 720, clear: 1000 },
+  { kind: 'cooker', name: 'Cooker', w: 600, d: 600, clear: 1000 },
+  { kind: 'cooker', name: 'Range cooker', w: 900, d: 600, clear: 1000 },
+  { kind: 'dishwasher', name: 'Dishwasher', w: 600, d: 600, clear: 800 },
+  { kind: 'washer', name: 'Washing machine', w: 600, d: 600, clear: 800 },
+  { kind: 'washer', name: 'Washer + dryer stack', w: 600, d: 650, clear: 800 },
+  { kind: 'cylinder', name: 'Hot water cylinder', w: 600, d: 600, clear: 600 },
+  { kind: 'island', name: 'Kitchen island', w: 2400, d: 1000, clear: 1000 },
+  { kind: 'table', name: 'Dining table (6)', w: 1800, d: 900, clear: 0 },
+  { kind: 'sofa', name: 'Sofa (3-seat)', w: 2100, d: 900, clear: 600 },
+  { kind: 'sofa', name: 'Sofa (2-seat)', w: 1700, d: 900, clear: 600 },
+  { kind: 'tv', name: 'TV unit', w: 1600, d: 450, clear: 600 },
+  { kind: 'bed', name: 'Double bed', w: 1500, d: 2000, clear: 600 },
+  { kind: 'wardrobe', name: 'Wardrobe', w: 1000, d: 600, clear: 800 },
+];
+const uid = () => 'x' + Math.random().toString(36).slice(2, 10);
+
 const stage = $('stage'), svg = $('svg'), world = $('world'), overlay = $('overlay');
 
 const st = {
@@ -168,6 +219,12 @@ const st = {
   measures: [],          // { a, b, view }
   calib: null,           // { a, b, view } awaiting a real length
   snapGrid: null, hover: null,
+  rooms: [],             // { id, name, poly: [[x,y],...] }  (PDF points)
+  items: [],             // { id, kind, name, w, d, clear, x, y, rot }  (w/d/clear in mm, x/y in points)
+  customItems: [],       // user catalogue entries
+  selected: null,        // selected item id
+  placing: null, placeRot: 0, roomPts: [],
+  wallGrid: null, mass: null,
 };
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -252,13 +309,19 @@ $('page-select').onchange = e => loadPage(+e.target.value);
 async function loadPage(n) {
   st.page = n;
   st.scene = await api(`/api/jobs/${st.jobId}/pages/${n}`);
-  st.measures = []; st.pending = []; st.calib = null; setMode(null);
+  const sv = st.scene.state || {};
+  st.rooms = (sv.rooms || []).map(r => ({ id: r.id, name: r.name, poly: r.poly.map(p => [p.x, p.y]) }));
+  st.items = (sv.items || []).map(i => ({ ...i }));
+  st.customItems = (sv.custom_items || []).map(i => ({ ...i }));
+  st.measures = (sv.measures || []).map(m => ({ a: [m.a.x, m.a.y], b: [m.b.x, m.b.y], view: null }));
+  for (const m of st.measures) m.view = viewAt(m.a[0], m.a[1]);
+  st.selected = null; st.pending = []; st.calib = null; st.roomPts = []; setMode(null);
   st.catOn = { ...CLEAN, text: 0 };
   st.viewOn = {};
   for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock';
   st.activeView = (st.scene.views.find(v => v.kind === 'drawing') || st.scene.views[0] || {}).id || null;
   st.notesOn = true;
-  buildSnapGrid();
+  buildSnapGrid(); buildWallGrid(); buildMass();
   renderScene();
   renderSidebar();
   fit();
@@ -316,7 +379,7 @@ function applyVisibility() {
 // ── sidebar ────────────────────────────────────────────────────────────────
 function renderSidebar() {
   const sc = st.scene;
-  for (const id of ['sec-views', 'sec-layers', 'sec-scale', 'sec-export']) $(id).hidden = false;
+  for (const id of ['sec-views', 'sec-layers', 'sec-scale', 'sec-rooms', 'sec-furn', 'sec-export']) $(id).hidden = false;
   $('sec-views').hidden = sc.views.length === 0;
 
   const vwrap = $('views'); vwrap.textContent = '';
@@ -362,8 +425,9 @@ function renderSidebar() {
   $('ratio').value = av && av.ratio ? av.ratio : '';
   const paper = paperName(sc.width, sc.height);
   $('paper-hint').textContent = `Page is ${Math.round(sc.width * PT_TO_MM)} × ${Math.round(sc.height * PT_TO_MM)} mm${paper ? ' (' + paper + ')' : ''}. Entering a ratio is only right if the PDF was printed at full size (e.g. "1:50 @ A1" on an A1 page). Otherwise calibrate.`;
-  renderMeasures();
+  renderMeasures(); renderRooms(); renderCatalogue(); renderSelected();
 }
+const ROOM_HINT = 'Draw a room by clicking its corners (they snap to the walls). Click the first corner again, press Enter or double-click to close it. Needs a scale.';
 const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 $('preset-clean').onclick = () => { st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
@@ -383,6 +447,10 @@ $('apply-ratio').onclick = () => { const r = parseFloat($('ratio').value); if (r
 // ── measuring ──────────────────────────────────────────────────────────────
 function setMode(m) {
   st.mode = m; st.pending = []; st.hover = null;
+  if (m !== 'place') st.placing = null;
+  if (m !== 'room') st.roomPts = [];
+  if (m !== 'place' && m !== 'room') $('room-hint').textContent = ROOM_HINT;
+  $('btn-room').classList.toggle('on', m === 'room');
   if (m !== 'calibrate') { st.calib = null; $('calib-form').hidden = true; }
   stage.classList.toggle('measuring', !!m);
   $('btn-measure').classList.toggle('on', m === 'measure');
@@ -428,6 +496,7 @@ function snap(x, y) {
 function renderOverlay() {
   overlay.textContent = '';
   const k = st.view.k, fs = 12 / k;
+  buildExtras(overlay, k);
   const draw = (a, b, color, label) => {
     overlay.appendChild(el('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: color, 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
     for (const p of [a, b]) overlay.appendChild(el('circle', { cx: p[0], cy: p[1], r: 3.5 / k, fill: color }));
@@ -436,6 +505,11 @@ function renderOverlay() {
       overlay.appendChild(t);
     }
   };
+  if (st.mode === 'room' && st.roomPts.length) {
+    const pts = st.roomPts.concat(st.hover ? [st.hover] : []);
+    overlay.appendChild(el('polyline', { points: pts.map(q => q.join(',')).join(' '), fill: 'none', stroke: '#059669', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
+    for (const q of st.roomPts) overlay.appendChild(el('circle', { cx: q[0], cy: q[1], r: 3.5 / k, fill: '#059669' }));
+  }
   for (const m of st.measures) draw(m.a, m.b, '#cc0000', lengthLabel(m.a, m.b, m.view));
   if (st.calib) draw(st.calib.a, st.calib.b, '#0a7d3b', 'calibration line');
   if (st.pending.length === 1) {
@@ -452,18 +526,295 @@ function renderMeasures() {
     const row = document.createElement('div'); row.className = 'row';
     const t = document.createElement('span'); t.style.flex = 1; t.textContent = `${i + 1}. ${lengthLabel(m.a, m.b, m.view)}`;
     const x = document.createElement('button'); x.className = 'mini'; x.textContent = '✕';
-    x.onclick = () => { st.measures.splice(i, 1); renderMeasures(); renderOverlay(); };
+    x.onclick = () => { st.measures.splice(i, 1); renderMeasures(); renderOverlay(); scheduleSave(); };
     row.append(t, x); w.appendChild(row);
   });
 }
 function onPick(p) {
+  if (st.mode === 'room') return roomPick(p);
   st.pending.push(p);
   if (st.pending.length < 2) return renderOverlay();
   const [a, b] = st.pending; st.pending = [];
   const view = viewAt(a[0], a[1]);
-  if (st.mode === 'measure') { st.measures.push({ a, b, view }); renderMeasures(); }
+  if (st.mode === 'measure') { st.measures.push({ a, b, view }); renderMeasures(); scheduleSave(); }
   else if (st.mode === 'calibrate') { st.calib = { a, b, view }; $('calib-form').hidden = false; $('calib-len').focus(); }
   renderOverlay();
+}
+
+// ── geometry helpers ───────────────────────────────────────────────────────
+const mmPerPtAt = (x, y) => { const v = viewAt(x, y); return v && v.mm_per_pt ? v.mm_per_pt : null; };
+const rot2 = (px, py, deg) => { const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return [px * c - py * s, px * s + py * c]; };
+function pointInPoly(x, y, P) {
+  let inside = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const [xi, yi] = P[i], [xj, yj] = P[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function polyArea(P) { let a = 0; for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length]; a += x1 * y2 - x2 * y1; } return Math.abs(a) / 2; }
+function centroid(P) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length], f = x1 * y2 - x2 * y1; a += f; cx += (x1 + x2) * f; cy += (y1 + y2) * f; }
+  if (Math.abs(a) < 1e-6) return [P.reduce((s, q) => s + q[0], 0) / P.length, P.reduce((s, q) => s + q[1], 0) / P.length];
+  return [cx / (3 * a), cy / (3 * a)];
+}
+function segSeg(ax, ay, bx, by, cx, cy, dx, dy) {
+  const o = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+  const d1 = o(ax, ay, bx, by, cx, cy), d2 = o(ax, ay, bx, by, dx, dy), d3 = o(cx, cy, dx, dy, ax, ay), d4 = o(cx, cy, dx, dy, bx, by);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+function segHitsPoly(x1, y1, x2, y2, P) {
+  if (pointInPoly(x1, y1, P) || pointInPoly(x2, y2, P)) return true;
+  for (let i = 0; i < P.length; i++) { const [a, b] = P[i], [c, d] = P[(i + 1) % P.length]; if (segSeg(x1, y1, x2, y2, a, b, c, d)) return true; }
+  return false;
+}
+function polyIntersects(A, B) {   // convex polygons, separating-axis test
+  for (const P of [A, B]) for (let i = 0; i < P.length; i++) {
+    const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length], nx = y1 - y2, ny = x2 - x1;
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const [x, y] of A) { const d = x * nx + y * ny; if (d < a0) a0 = d; if (d > a1) a1 = d; }
+    for (const [x, y] of B) { const d = x * nx + y * ny; if (d < b0) b0 = d; if (d > b1) b1 = d; }
+    if (a1 < b0 || b1 < a0) return false;
+  }
+  return true;
+}
+function buildWallGrid() {
+  const C = 40, grid = new Map(), w = st.scene.walls || [];
+  for (let i = 0; i < w.length; i += 4) {
+    const x0 = Math.floor(Math.min(w[i], w[i + 2]) / C), x1 = Math.floor(Math.max(w[i], w[i + 2]) / C);
+    const y0 = Math.floor(Math.min(w[i + 1], w[i + 3]) / C), y1 = Math.floor(Math.max(w[i + 1], w[i + 3]) / C);
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 3000) continue;
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) {
+      const key = cx + ',' + cy; let a = grid.get(key); if (!a) grid.set(key, a = []); a.push(i);
+    }
+  }
+  st.wallGrid = { C, grid };
+}
+function buildMass() {
+  const m = st.scene.mass || { cell: 8, cells: [] };
+  st.mass = { cell: m.cell, set: new Set() };
+  for (let i = 0; i < m.cells.length; i += 2) st.mass.set.add(m.cells[i] + ',' + m.cells[i + 1]);
+}
+function massHit(P) {   // hatched wall bands count as solid
+  if (!st.mass || !st.mass.set.size) return false;
+  const c = st.mass.cell, xs = P.map(q => q[0]), ys = P.map(q => q[1]);
+  for (let cx = Math.floor(Math.min(...xs) / c); cx <= Math.floor(Math.max(...xs) / c); cx++)
+    for (let cy = Math.floor(Math.min(...ys) / c); cy <= Math.floor(Math.max(...ys) / c); cy++)
+      if (st.mass.set.has(cx + ',' + cy) && polyIntersects(P, [[cx * c, cy * c], [(cx + 1) * c, cy * c], [(cx + 1) * c, (cy + 1) * c], [cx * c, (cy + 1) * c]])) return true;
+  return false;
+}
+function wallsHit(P) {
+  if (!st.wallGrid) return false;
+  if (massHit(P)) return true;
+  const { C, grid } = st.wallGrid, w = st.scene.walls || [], seen = new Set();
+  const xs = P.map(q => q[0]), ys = P.map(q => q[1]);
+  for (let cx = Math.floor(Math.min(...xs) / C); cx <= Math.floor(Math.max(...xs) / C); cx++)
+    for (let cy = Math.floor(Math.min(...ys) / C); cy <= Math.floor(Math.max(...ys) / C); cy++) {
+      const a = grid.get(cx + ',' + cy); if (!a) continue;
+      for (const i of a) { if (seen.has(i)) continue; seen.add(i); if (segHitsPoly(w[i], w[i + 1], w[i + 2], w[i + 3], P)) return true; }
+    }
+  return false;
+}
+
+// ── furniture ──────────────────────────────────────────────────────────────
+// Local frame: x across the width, y front-to-back, front is +y. Rotation is clockwise on screen.
+function itemGeom(it) {
+  const s = mmPerPtAt(it.x, it.y); if (!s) return null;
+  const hw = it.w / 2 / s, hd = it.d / 2 / s, cl = it.clear / s, t = 10 / s;   // t: tolerance so flush placement is not a clash
+  const mk = pts => pts.map(([px, py]) => { const [rx, ry] = rot2(px, py, it.rot || 0); return [it.x + rx, it.y + ry]; });
+  return {
+    s, body: mk([[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]),
+    zone: cl > 0 ? mk([[-hw, hd], [hw, hd], [hw, hd + cl], [-hw, hd + cl]]) : null,
+    front: mk([[-hw, hd], [hw, hd]]),
+    testBody: mk([[-hw + t, -hd + t], [hw - t, -hd + t], [hw - t, hd - t], [-hw + t, hd - t]]),
+    testZone: cl > t * 2 ? mk([[-hw + t, hd + t], [hw - t, hd + t], [hw - t, hd + cl], [-hw + t, hd + cl]]) : null,
+  };
+}
+function clashOf(it, g) {
+  if (!g) return { hard: false, warn: false };
+  const others = st.items.filter(o => o.id !== it.id).map(itemGeom).filter(Boolean);
+  const hard = wallsHit(g.testBody) || others.some(o => polyIntersects(g.testBody, o.testBody));
+  const warn = !!g.testZone && (wallsHit(g.testZone) || others.some(o => polyIntersects(g.testZone, o.testBody)));
+  return { hard, warn };
+}
+function hitItem(x, y) {
+  for (let i = st.items.length - 1; i >= 0; i--) { const g = itemGeom(st.items[i]); if (g && pointInPoly(x, y, g.body)) return st.items[i]; }
+  return null;
+}
+function haloText(x, y, size, fill, weight, text) {
+  return el('text', { x, y, 'font-size': size, 'text-anchor': 'middle', fill, 'font-family': 'Arial,sans-serif', 'font-weight': weight, stroke: '#fff', 'stroke-width': size / 4, 'paint-order': 'stroke', 'pointer-events': 'none' }, text);
+}
+function drawItem(g, it, k, selected, ghost) {
+  const geo = itemGeom(it);
+  if (!geo) return;
+  const c = clashOf(it, geo);
+  const color = c.hard ? '#dc2626' : c.warn ? '#d97706' : '#1d4ed8';
+  const poly = P => P.map(q => q.join(',')).join(' ');
+  if (geo.zone) g.appendChild(el('polygon', { points: poly(geo.zone), fill: c.warn ? 'rgba(217,119,6,.22)' : 'rgba(29,78,216,.06)', stroke: c.warn ? '#d97706' : '#1d4ed8', 'stroke-width': 1, 'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke', opacity: ghost ? 0.6 : 1 }));
+  g.appendChild(el('polygon', { points: poly(geo.body), fill: c.hard ? 'rgba(220,38,38,.28)' : 'rgba(29,78,216,.22)', stroke: color, 'stroke-width': selected ? 2.6 : 1.5, 'vector-effect': 'non-scaling-stroke', opacity: ghost ? 0.7 : 1 }));
+  g.appendChild(el('line', { x1: geo.front[0][0], y1: geo.front[0][1], x2: geo.front[1][0], y2: geo.front[1][1], stroke: color, 'stroke-width': 3.5, 'vector-effect': 'non-scaling-stroke' }));
+  const fs = 10 / k;
+  g.appendChild(haloText(it.x, it.y - fs * 0.1, fs, '#1e3a8a', 700, it.name));
+  g.appendChild(haloText(it.x, it.y + fs * 1.1, fs * 0.9, '#1e3a8a', 400, `${Math.round(it.w)}×${Math.round(it.d)}`));
+}
+function buildExtras(g, k) {
+  const fs = 11 / k;
+  for (const r of st.rooms) {
+    g.appendChild(el('polygon', { points: r.poly.map(q => q.join(',')).join(' '), fill: 'rgba(5,150,105,.09)', stroke: '#059669', 'stroke-width': 1.2, 'stroke-dasharray': '6 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
+    const c = centroid(r.poly), m = roomMetrics(r);
+    g.appendChild(haloText(c[0], c[1] - fs * 0.2, fs * 1.2, '#065f46', 700, r.name || 'Room'));
+    g.appendChild(haloText(c[0], c[1] + fs * 1.2, fs, '#065f46', 400, m.area == null ? 'set scale' : `${m.area.toFixed(1)} m²`));
+  }
+  for (const it of st.items) drawItem(g, it, k, it.id === st.selected, false);
+  if (st.mode === 'place' && st.placing && st.hover) drawItem(g, { ...st.placing, id: 'ghost', x: st.hover[0], y: st.hover[1], rot: st.placeRot || 0 }, k, false, true);
+}
+
+function placeAt(x, y) {
+  const s = mmPerPtAt(x, y);
+  if (!s) { $('room-hint').textContent = 'Set the scale for this drawing first (section 4), then place items.'; return; }
+  const it = { id: uid(), kind: st.placing.kind, name: st.placing.name, w: st.placing.w, d: st.placing.d, clear: st.placing.clear, x, y, rot: st.placeRot || 0 };
+  st.items.push(it);
+  setMode(null);
+  selectItem(it.id);
+  scheduleSave(); renderRooms();
+}
+function selectItem(id) { st.selected = id; renderSelected(); renderOverlay(); }
+function rotateSelected() { const it = st.items.find(i => i.id === st.selected); if (!it) return; it.rot = ((it.rot || 0) + 90) % 360; scheduleSave(); renderSelected(); renderOverlay(); }
+function deleteSelected() { st.items = st.items.filter(i => i.id !== st.selected); st.selected = null; scheduleSave(); renderRooms(); renderSelected(); renderOverlay(); }
+function nudge(it, key, mm) {
+  const s = mmPerPtAt(it.x, it.y); if (!s) return;
+  const d = mm / s;
+  if (key === 'ArrowLeft') it.x -= d; else if (key === 'ArrowRight') it.x += d; else if (key === 'ArrowUp') it.y -= d; else if (key === 'ArrowDown') it.y += d; else return;
+  scheduleSave(); renderRooms(); renderSelected(); renderOverlay();
+}
+
+function renderCatalogue() {
+  const w = $('catalogue'); w.textContent = '';
+  const all = CATALOGUE.concat(st.customItems.map(c => ({ ...c, custom: true })));
+  for (const c of all) {
+    const b = document.createElement('button'); b.className = 'cat-btn' + (st.placing && st.placing.name === c.name && st.placing.w === c.w ? ' on' : '');
+    b.append(document.createTextNode(c.name));
+    const sm = document.createElement('small'); sm.textContent = `${c.w}×${c.d} mm` + (c.custom ? ' · custom' : ''); b.appendChild(sm);
+    b.onclick = () => {
+      if (!mmPerPtAt(...centreOfView())) { $('room-hint').textContent = 'Set the scale for this drawing first (section 4), then place items.'; return; }
+      st.placeRot = 0; setMode('place'); st.placing = c;
+      $('room-hint').textContent = `Placing ${c.name}: click on the plan. R rotates, Esc cancels.`;
+      renderCatalogue();
+    };
+    if (c.custom) b.oncontextmenu = e => { e.preventDefault(); st.customItems = st.customItems.filter(x => x !== st.customItems.find(y => y.name === c.name && y.w === c.w)); scheduleSave(); renderCatalogue(); };
+    w.appendChild(b);
+  }
+}
+function centreOfView() { const v = viewData(st.activeView) || st.scene.views[0]; return v ? [(v.bbox[0] + v.bbox[2]) / 2, (v.bbox[1] + v.bbox[3]) / 2] : [st.scene.width / 2, st.scene.height / 2]; }
+$('c-add').onclick = () => {
+  const name = $('c-name').value.trim(), w = parseFloat($('c-w').value), d = parseFloat($('c-d').value), clear = parseFloat($('c-c').value) || 0;
+  if (!name || !(w > 0) || !(d > 0)) return;
+  st.customItems.push({ kind: 'custom', name, w, d, clear }); scheduleSave(); renderCatalogue();
+  $('c-name').value = ''; $('c-w').value = ''; $('c-d').value = '';
+};
+
+function renderSelected() {
+  const box = $('selected-item'); box.textContent = '';
+  const it = st.items.find(i => i.id === st.selected);
+  if (!it) return;
+  const wrap = document.createElement('div'); wrap.className = 'sel-box';
+  const field = (label, val, set, type = 'number') => {
+    const row = document.createElement('div'); row.className = 'row';
+    const l = document.createElement('span'); l.textContent = label; l.style.width = '64px';
+    const i = document.createElement('input'); i.className = 'field'; i.type = type; i.value = val; if (type === 'number') i.min = 0;
+    i.onchange = () => { set(i.value); scheduleSave(); renderRooms(); renderOverlay(); renderSelected(); };
+    row.append(l, i); wrap.appendChild(row);
+  };
+  field('Name', it.name, v => { it.name = v.slice(0, 80) || it.name; }, 'text');
+  field('Width mm', it.w, v => { if (+v > 0) it.w = +v; });
+  field('Depth mm', it.d, v => { if (+v > 0) it.d = +v; });
+  field('Clear mm', it.clear, v => { if (+v >= 0) it.clear = +v; });
+  const g = itemGeom(it), c = clashOf(it, g);
+  const stat = document.createElement('div');
+  stat.className = 'stat ' + (c.hard ? 'bad' : c.warn ? 'warn' : 'ok');
+  stat.textContent = !g ? 'Set the scale for this drawing.' : c.hard ? 'Clashes with a wall or another item.' : c.warn ? 'Fits, but the front clearance is blocked.' : 'Fits, with clearance.';
+  wrap.appendChild(stat);
+  const btns = document.createElement('div'); btns.className = 'btns';
+  const rb = document.createElement('button'); rb.className = 'btn'; rb.textContent = 'Rotate 90° (R)'; rb.onclick = rotateSelected;
+  const db = document.createElement('button'); db.className = 'btn'; db.textContent = 'Delete'; db.onclick = deleteSelected;
+  btns.append(rb, db); wrap.appendChild(btns);
+  box.appendChild(wrap);
+}
+
+// ── rooms ──────────────────────────────────────────────────────────────────
+function roomMetrics(r) {
+  const c = centroid(r.poly), s = mmPerPtAt(c[0], c[1]);
+  if (!s) return { area: null, perim: null, furn: 0, free: null, n: 0 };
+  const area = polyArea(r.poly) * s * s / 1e6;
+  let perim = 0; for (let i = 0; i < r.poly.length; i++) { const a = r.poly[i], b = r.poly[(i + 1) % r.poly.length]; perim += Math.hypot(a[0] - b[0], a[1] - b[1]); }
+  const inside = st.items.filter(i => pointInPoly(i.x, i.y, r.poly));
+  const furn = inside.reduce((t, i) => t + i.w * i.d / 1e6, 0);
+  return { area, perim: perim * s / 1000, furn, free: area - furn, n: inside.length };
+}
+function roomPick(p) {
+  const first = st.roomPts[0];
+  if (first && st.roomPts.length >= 3 && Math.hypot(p[0] - first[0], p[1] - first[1]) * st.view.k < 12) return closeRoom();
+  st.roomPts.push(p); renderOverlay();
+}
+function closeRoom() {
+  if (st.roomPts.length < 3) return;
+  const c = centroid(st.roomPts);
+  if (!mmPerPtAt(c[0], c[1])) { $('room-hint').textContent = 'Set the scale for this drawing first (section 4) so the room area is real.'; }
+  st.rooms.push({ id: uid(), name: `Room ${st.rooms.length + 1}`, poly: st.roomPts.slice() });
+  setMode(null); scheduleSave(); renderRooms(); renderOverlay();
+}
+$('btn-room').onclick = () => { setMode(st.mode === 'room' ? null : 'room'); if (st.mode === 'room') $('room-hint').textContent = 'Click the room corners. Click the first corner again, press Enter or double-click to finish. Esc cancels.'; };
+function renderRooms() {
+  const w = $('rooms'); w.textContent = '';
+  if (!st.rooms.length) return;
+  let totA = 0, totF = 0, anyNoScale = false;
+  for (const r of st.rooms) {
+    const m = roomMetrics(r);
+    const row = document.createElement('div'); row.className = 'row';
+    const name = document.createElement('input'); name.type = 'text'; name.value = r.name; name.maxLength = 80;
+    name.onchange = () => { r.name = name.value.trim() || r.name; scheduleSave(); renderOverlay(); };
+    const zoom = document.createElement('button'); zoom.className = 'mini'; zoom.textContent = '⤢'; zoom.title = 'Zoom to room';
+    zoom.onclick = () => { const xs = r.poly.map(q => q[0]), ys = r.poly.map(q => q[1]); fitBox([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]); };
+    const del = document.createElement('button'); del.className = 'mini'; del.textContent = '✕'; del.title = 'Delete room';
+    del.onclick = () => { st.rooms = st.rooms.filter(x => x !== r); scheduleSave(); renderRooms(); renderOverlay(); };
+    row.append(name, zoom, del); w.appendChild(row);
+    const stat = document.createElement('div'); stat.className = 'stat';
+    if (m.area == null) { stat.textContent = 'Set the scale to get area.'; anyNoScale = true; }
+    else { stat.textContent = `${m.area.toFixed(1)} m² · perimeter ${m.perim.toFixed(1)} m · furniture ${m.furn.toFixed(1)} m² (${m.n}) · free ${m.free.toFixed(1)} m²`; totA += m.area; totF += m.free; }
+    w.appendChild(stat);
+  }
+  if (!anyNoScale && st.rooms.length > 1) { const t = document.createElement('div'); t.className = 'stat'; t.style.marginTop = '6px'; t.style.fontWeight = '700'; t.textContent = `Total ${totA.toFixed(1)} m² · free ${totF.toFixed(1)} m²`; w.appendChild(t); }
+}
+$('dl-csv').onclick = () => {
+  const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+  const lines = [['Room', 'Area m2', 'Perimeter m', 'Furniture m2', 'Free m2', 'Items'].map(q).join(',')];
+  for (const r of st.rooms) { const m = roomMetrics(r); lines.push([r.name, m.area == null ? '' : m.area.toFixed(2), m.perim == null ? '' : m.perim.toFixed(2), m.furn.toFixed(2), m.free == null ? '' : m.free.toFixed(2), m.n].map(q).join(',')); }
+  lines.push('', ['Item', 'Width mm', 'Depth mm', 'Room'].map(q).join(','));
+  for (const i of st.items) { const room = st.rooms.find(r => pointInPoly(i.x, i.y, r.poly)); lines.push([i.name, Math.round(i.w), Math.round(i.d), room ? room.name : ''].map(q).join(',')); }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = (st.filename.replace(/\.pdf$/i, '') || 'plan') + '-schedule.csv';
+  a.click(); URL.revokeObjectURL(a.href);
+};
+
+// ── autosave ───────────────────────────────────────────────────────────────
+let saveTimer = null;
+function scheduleSave() {
+  if (!st.jobId) return;
+  clearTimeout(saveTimer);
+  const job = st.jobId, page = st.page;
+  saveTimer = setTimeout(async () => {
+    const pt = q => ({ x: q[0], y: q[1] });
+    const body = {
+      rooms: st.rooms.map(r => ({ id: r.id, name: r.name, poly: r.poly.map(pt) })),
+      items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: i.w, d: i.d, clear: i.clear, x: i.x, y: i.y, rot: i.rot || 0 })),
+      measures: st.measures.map(m => ({ a: pt(m.a), b: pt(m.b) })),
+      custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: c.w, d: c.d, clear: c.clear })),
+    };
+    try { await api(`/api/jobs/${job}/pages/${page}/state`, jsonPut(body)); }
+    catch (e) { status('upload-status', 'error', 'Could not save: ' + e.message); }
+  }, 500);
 }
 
 // ── pan / zoom ─────────────────────────────────────────────────────────────
@@ -505,30 +856,54 @@ $('zoom-in').onclick = () => zoomAt(1.4); $('zoom-out').onclick = () => zoomAt(1
 
 svg.addEventListener('wheel', e => { if (!st.scene) return; e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY); }, { passive: false });
 let drag = null;
-svg.addEventListener('pointerdown', e => { if (!st.scene) return; svg.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false }; });
+svg.addEventListener('pointerdown', e => {
+  if (!st.scene) return;
+  svg.setPointerCapture(e.pointerId);
+  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null };
+  if (!st.mode) {
+    const [wx, wy] = screenToWorld(e.clientX, e.clientY), hit = hitItem(wx, wy);
+    if (hit) { drag.item = { it: hit, ox: hit.x - wx, oy: hit.y - wy }; selectItem(hit.id); }
+  }
+});
 svg.addEventListener('pointermove', e => {
   if (!st.scene) return;
   if (drag) {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(dx, dy) > 4) drag.moved = true;
+    if (drag.item) {
+      if (drag.moved) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.item.it.x = wx + drag.item.ox; drag.item.it.y = wy + drag.item.oy; renderOverlay(); }
+      return;
+    }
     if (drag.moved) { st.view.tx = drag.tx + dx; st.view.ty = drag.ty + dy; applyView(); return; }
   }
   const [x, y] = screenToWorld(e.clientX, e.clientY);
-  if (st.mode) { st.hover = snap(x, y).p; renderOverlay(); }
+  if (st.mode) { st.hover = st.mode === 'place' ? [x, y] : snap(x, y).p; renderOverlay(); }
   const hud = $('hud'), v = viewAt(x, y);
   hud.style.display = 'block';
   hud.textContent = `x ${x.toFixed(1)}  y ${y.toFixed(1)} pt` + (v && v.mm_per_pt ? `  ·  ${fmtLen(x * v.mm_per_pt)} , ${fmtLen(y * v.mm_per_pt)} from page origin` : '');
 });
 svg.addEventListener('pointerup', e => {
-  const wasDrag = drag && drag.moved; drag = null;
-  if (wasDrag || !st.mode || !st.scene) return;
+  const wasDrag = drag && drag.moved, dragItem = drag && drag.item; drag = null;
+  if (!st.scene) return;
+  if (dragItem) { if (wasDrag) { scheduleSave(); renderRooms(); renderSelected(); } return; }
+  if (wasDrag) return;
   const [x, y] = screenToWorld(e.clientX, e.clientY);
+  if (!st.mode) { if (st.selected) selectItem(null); return; }
+  if (st.mode === 'place') return placeAt(x, y);
   onPick(snap(x, y).p);
 });
+svg.addEventListener('dblclick', () => { if (st.mode === 'room') closeRoom(); });
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-  if (e.key === 'Escape') setMode(null);
-  else if (e.key === 'm' || e.key === 'M') $('btn-measure').click();
+  const sel = st.items.find(i => i.id === st.selected);
+  if (e.key === 'Escape') { if (st.mode) setMode(null); else selectItem(null); }
+  else if (e.key === 'Enter' && st.mode === 'room') closeRoom();
+  else if ((e.key === 'd' || e.key === 'D') && st.scene) $('btn-room').click();
+  else if ((e.key === 'r' || e.key === 'R') && st.mode === 'place') { st.placeRot = ((st.placeRot || 0) + 90) % 360; renderOverlay(); }
+  else if ((e.key === 'r' || e.key === 'R') && sel) rotateSelected();
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) deleteSelected();
+  else if (sel && e.key.startsWith('Arrow')) { e.preventDefault(); nudge(sel, e.key, e.shiftKey ? 100 : 10); }
+  else if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey) $('btn-measure').click();
   else if (e.key === 'c' || e.key === 'C') $('btn-calibrate').click();
   else if (e.key === 'f' || e.key === 'F') fit();
 });
@@ -548,6 +923,7 @@ $('dl-svg').onclick = () => {
   out.appendChild(el('style', {}, 'path{fill:none;stroke-linecap:round;stroke-linejoin:round}.c-structure{stroke-width:.72}.c-detail,.c-dashed{stroke-width:.36}.c-fine,.c-hatch{stroke-width:.12}.c-fills,.c-text{stroke:none}.note{fill:#1d4ed8;font-family:Arial,sans-serif}'));
   out.appendChild(clone);
   const ov = el('g');
+  buildExtras(ov, 1);
   for (const m of st.measures) {
     ov.appendChild(el('line', { x1: m.a[0], y1: m.a[1], x2: m.b[0], y2: m.b[1], stroke: '#cc0000', 'stroke-width': 1 }));
     ov.appendChild(el('text', { x: (m.a[0] + m.b[0]) / 2, y: (m.a[1] + m.b[1]) / 2 - 3, 'font-size': 9, 'text-anchor': 'middle', fill: '#cc0000', 'font-family': 'Arial,sans-serif' }, lengthLabel(m.a, m.b, m.view)));

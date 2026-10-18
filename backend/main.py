@@ -133,6 +133,8 @@ def get_page(job_id: str, page: int):
         v["mm_per_pt"] = saved.get("mm_per_pt")
         v["ratio"] = saved.get("ratio")
     scene["categories"] = [{"id": k, "label": label} for k, label in extract.CATEGORIES]
+    sp = _state_path(d, page)
+    scene["state"] = read_json(sp) if sp.exists() else PageState().model_dump()
     return scene
 
 
@@ -164,6 +166,70 @@ def update_view(job_id: str, page: int, view_id: str, body: ViewUpdate):
         v["mm_per_pt"] = body.mm_per_pt
     write_json(d / "meta.json", meta)
     return v
+
+
+# ── Project state: rooms, furniture, measurements (user data, separate from extraction) ──
+class Pt(BaseModel):
+    x: float = Field(ge=-1e6, le=1e6)
+    y: float = Field(ge=-1e6, le=1e6)
+
+
+class Room(BaseModel):
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    name: str = Field(max_length=80)
+    poly: list[Pt] = Field(min_length=3, max_length=300)
+
+
+class Item(BaseModel):
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    kind: str = Field(max_length=40)
+    name: str = Field(max_length=80)
+    w: float = Field(gt=0, le=50000)       # millimetres, across the front
+    d: float = Field(gt=0, le=50000)       # millimetres, front to back
+    clear: float = Field(ge=0, le=10000)   # working / door clearance in front, mm
+    x: float = Field(ge=-1e6, le=1e6)      # centre, PDF points
+    y: float = Field(ge=-1e6, le=1e6)
+    rot: float = Field(ge=-360, le=360)    # degrees, multiples of 90 in the UI
+
+
+class Measure(BaseModel):
+    a: Pt
+    b: Pt
+
+
+class CatalogueItem(BaseModel):
+    kind: str = Field(max_length=40)
+    name: str = Field(max_length=80)
+    w: float = Field(gt=0, le=50000)
+    d: float = Field(gt=0, le=50000)
+    clear: float = Field(ge=0, le=10000)
+
+
+class PageState(BaseModel):
+    rooms: list[Room] = Field(default_factory=list, max_length=200)
+    items: list[Item] = Field(default_factory=list, max_length=1000)
+    measures: list[Measure] = Field(default_factory=list, max_length=500)
+    custom_items: list[CatalogueItem] = Field(default_factory=list, max_length=100)
+
+
+def _state_path(d: Path, page: int) -> Path:
+    return d / f"state-{page}.json"
+
+
+def _page_meta(d: Path, page: int) -> dict:
+    meta = read_json(d / "meta.json")
+    pm = next((m for m in meta["pages"] if m["page"] == page), None)
+    if pm is None:
+        raise HTTPException(404, "Page not found")
+    return pm
+
+
+@app.put("/api/jobs/{job_id}/pages/{page}/state")
+def put_state(job_id: str, page: int, body: PageState):
+    d = job_dir(job_id)
+    _page_meta(d, page)
+    write_json(_state_path(d, page), body.model_dump())
+    return {"ok": True}
 
 
 @app.get("/api/jobs/{job_id}/original.pdf")
