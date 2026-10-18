@@ -200,3 +200,26 @@ def test_wrapped_lines_are_flagged(client):
     texts = {t["text"]: t["wrap"] for t in client.get(f"/api/jobs/{jid}/pages/1").json()["texts"]}
     assert texts["first line of a wrapped note"] is True
     assert texts["standalone"] is False
+
+
+def noted_pdf(text: str) -> bytes:
+    """The small plan (a real A4 landscape page) with a note added."""
+    doc = pymupdf.open(stream=plan_pdf(), filetype="pdf")
+    page = doc[0]
+    page.insert_text((120, 480), text, fontsize=14)
+    return doc.tobytes()
+
+
+def test_read_scale_from_the_pdf_text(client):
+    job = upload(client, noted_pdf("GROUND FLOOR PLAN 1:50 @ A4")).json()["job_id"]
+    r = client.post(f"/api/jobs/{job}/pages/1/read-scale").json()
+    assert r["applied"] and r["found"]["ratio"] == 50
+    page = client.get(f"/api/jobs/{job}/pages/1").json()
+    assert any(v["kind"] == "drawing" and v["ratio"] == 50 for v in page["views"])
+
+
+def test_read_scale_only_suggests_when_the_paper_size_is_not_confirmed(client):
+    job = upload(client, noted_pdf("Scale 1:50")).json()["job_id"]
+    r = client.post(f"/api/jobs/{job}/pages/1/read-scale").json()
+    assert not r["applied"] and r["found"]["ratio"] == 50
+    assert client.post(f"/api/jobs/{job}/pages/1/read-scale").status_code == 200

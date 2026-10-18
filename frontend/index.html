@@ -152,7 +152,8 @@
     <div class="sec" id="sec-scale" hidden>
       <h2>4 · Scale &amp; measure</h2>
       <div class="row"><span>Active drawing:</span><strong id="active-name"></strong><span class="tag" id="active-tag"></span></div>
-      <div class="row">Sheet scale 1 : <input class="field" type="number" id="ratio" min="1" step="1" placeholder="50" style="width:70px"><button class="btn" id="apply-ratio">Set</button></div>
+      <div class="row">Sheet scale 1 : <input class="field" type="number" id="ratio" min="1" step="1" placeholder="50" style="width:70px"><button class="btn" id="apply-ratio">Set</button><button class="btn" id="read-scale" title="Look for a printed scale such as 1:50 @ A1 in the PDF">Read from drawing</button></div>
+      <div class="hint" id="scale-hint"></div>
       <div class="hint" id="paper-hint"></div>
       <div class="btns">
         <button class="btn" id="btn-measure">Measure (M)</button>
@@ -175,7 +176,7 @@
 
     <div class="sec" id="sec-furn" hidden>
       <h2>6 · Furniture &amp; appliances</h2>
-      <div class="hint" style="margin:0 0 8px">Pick an item, then click where it goes. Drag to move, R to rotate, Delete to remove. The dashed zone in front is working / door clearance.</div>
+      <div class="hint" style="margin:0 0 8px">Drag an item onto the plan, or pick it and click where it goes. Drag to move, R to rotate, Delete to remove. The dashed zone in front is working / door clearance.</div>
       <div class="status" id="cat-hint"></div>
       <div id="catalogue" class="cat-grid"></div>
       <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Add a custom item</summary>
@@ -389,6 +390,8 @@ async function loadPage(n) {
   renderSidebar();
   fit();
   $('viewer-label').textContent = `${st.filename} · page ${n}`;
+  $('scale-hint').textContent = '';
+  if (st.scene.kind !== 'scan' && st.scene.views.some(v => v.kind === 'drawing' && !v.mm_per_pt)) readScale(true);
   const b = $('banner');
   if (st.scene.kind === 'scan') {
     b.textContent = 'This page is a scan (no vector data). Showing a raster preview; you can still calibrate and measure. Automatic extraction for scans is planned.';
@@ -505,6 +508,27 @@ async function saveScale(body) {
     renderSidebar(); renderOverlay();
   } catch (e) { status('upload-status', 'error', e.message); }
 }
+async function readScale(auto) {
+  if (!st.jobId || !st.scene || st.scene.kind === 'scan') return;
+  const job = st.jobId, page = st.page, hint = $('scale-hint'), btn = $('read-scale');
+  btn.disabled = true; hint.textContent = 'Reading the scale from the drawing…';
+  try {
+    const r = await api(`/api/jobs/${job}/pages/${page}/read-scale`, { method: 'POST' });
+    if (st.jobId !== job || st.page !== page) return;
+    if (r.applied) {
+      for (const v of st.scene.views) if (v.kind === 'drawing' && !v.mm_per_pt) { v.ratio = r.found.ratio; v.mm_per_pt = PT_TO_MM * r.found.ratio; }
+      renderSidebar(); renderOverlay();
+      hint.textContent = `Read "${r.found.text}" from the drawing and set the scale to 1:${r.found.ratio}.`;
+    } else if (r.found) {
+      hint.textContent = `The drawing mentions "${r.found.text}", but it isn't confirmed for this page size. If that is the plan's scale, type ${r.found.ratio} above and press Set.`;
+      $('ratio').value = r.found.ratio;
+    } else {
+      hint.textContent = auto && !r.ocr_available ? '' : 'No printed scale found.' + (r.ocr_available ? '' : ' (Install the OCR add-on to read scales drawn as outlines: pip install -r backend/requirements-ocr.txt)') + ' Enter it manually.';
+    }
+  } catch (e) { hint.textContent = auto ? '' : e.message; }
+  finally { btn.disabled = false; }
+}
+$('read-scale').onclick = () => readScale(false);
 $('apply-ratio').onclick = () => { const r = parseFloat($('ratio').value); if (r > 0) saveScale({ ratio: r }); };
 
 // ── measuring ──────────────────────────────────────────────────────────────
@@ -830,6 +854,13 @@ function renderCatalogue() {
     const b = document.createElement('button'); b.className = 'cat-btn' + (st.placing && st.placing.name === c.name && st.placing.w === c.w ? ' on' : '');
     b.append(document.createTextNode(c.name));
     const sm = document.createElement('small'); sm.textContent = `${c.w}×${c.d} mm` + (c.custom ? ' · custom' : ''); b.appendChild(sm);
+    b.draggable = true;
+    b.ondragstart = e => {
+      if (!mmPerPtAt(...centreOfView())) { e.preventDefault(); needScale(); return; }
+      e.dataTransfer.setData('text/plain', c.name); e.dataTransfer.effectAllowed = 'copy';
+      st.placeRot = 0; setMode('place'); st.placing = c; st.dragPlacing = true;
+    };
+    b.ondragend = () => { if (st.dragPlacing) { st.dragPlacing = false; setMode(null); renderCatalogue(); } };
     b.onclick = () => {
       if (!mmPerPtAt(...centreOfView())) { needScale(); return; }
       st.placeRot = 0; setMode('place'); st.placing = c;
@@ -1421,6 +1452,17 @@ svg.addEventListener('pointerup', e => {
   if (st.mode === 'place') return placeAt(x, y);
   if (st.mode === 'pin') return addPin(x, y);
   onPick(snap(x, y).p);
+});
+stage.addEventListener('dragover', e => {
+  if (!st.dragPlacing || !st.placing) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+  st.hover = screenToWorld(e.clientX, e.clientY); renderOverlay();
+});
+stage.addEventListener('drop', e => {
+  if (!st.dragPlacing || !st.placing) return;
+  e.preventDefault(); st.dragPlacing = false;
+  const [x, y] = screenToWorld(e.clientX, e.clientY);
+  placeAt(x, y); renderCatalogue();
 });
 svg.addEventListener('dblclick', () => { if (st.mode === 'room') closeRoom(); });
 window.addEventListener('keydown', e => {
