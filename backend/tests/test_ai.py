@@ -336,3 +336,25 @@ def test_model_overrides_from_env_apply_at_use_time(monkeypatch):
     monkeypatch.setenv("AI_MODEL_OPENAI", "gpt-custom")
     assert ai.OpenAIProvider(None, object()).model == "gpt-custom"
     assert {p["id"]: p["default_model"] for p in ai.provider_status()}["openai"] == "gpt-custom"
+
+
+# ── local models and model lists ──────────────────────────────────────────────
+def test_local_provider_points_at_the_local_server(monkeypatch):
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    assert ai.LocalProvider.configured()
+    assert ai.LocalProvider.base_url_value() == "http://localhost:11434/v1"
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
+    args = ai.LocalProvider()._client_args()
+    assert args["base_url"] == "http://127.0.0.1:1234/v1" and args["api_key"]
+
+
+def test_model_lists(client, monkeypatch):
+    monkeypatch.setattr(ai.LocalProvider, "installed_models", classmethod(lambda cls: ["llama3.1:8b", "qwen2.5"]))
+    r = client.get("/api/ai/providers/local/models").json()
+    assert r["models"] == ["llama3.1:8b", "qwen2.5"] and r["live"]
+    monkeypatch.setattr(ai.LocalProvider, "installed_models", classmethod(lambda cls: []))
+    r = client.get("/api/ai/providers/local/models").json()
+    assert r["models"] and not r["live"] and "Ollama" in r["note"]
+    assert "claude-sonnet-5-5" in client.get("/api/ai/providers/anthropic/models").json()["models"]
+    assert client.get("/api/ai/providers/nope/models").status_code == 404
+    assert any(p["id"] == "local" for p in client.get("/api/ai/providers").json())

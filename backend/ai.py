@@ -83,6 +83,7 @@ class Provider:
     sdk = ""
     model_env = ""
     model_fallback = ""
+    suggested_models: tuple[str, ...] = ()
 
     @classmethod
     def default_model(cls) -> str:
@@ -118,6 +119,7 @@ class AnthropicProvider(Provider):
     id, label, sdk = "anthropic", "Claude (Anthropic)", "anthropic"
     env_keys = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
     model_env, model_fallback = "AI_MODEL_ANTHROPIC", "claude-opus-5-5"
+    suggested_models = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1")
 
     @classmethod
     def configured(cls) -> bool:
@@ -154,12 +156,17 @@ class OpenAIProvider(Provider):
     id, label, sdk = "openai", "OpenAI", "openai"
     env_keys = ("OPENAI_API_KEY",)
     model_env, model_fallback = "AI_MODEL_OPENAI", "gpt-4o"
+    suggested_models = ("gpt-4o", "gpt-4o-mini", "gpt-5.4", "gpt-5.4-mini")
+    base_url: str | None = None
 
     def _c(self):
         if self.client is None:
             import openai
-            self.client = openai.OpenAI(timeout=REQUEST_TIMEOUT, max_retries=2)
+            self.client = openai.OpenAI(timeout=REQUEST_TIMEOUT, max_retries=2, **self._client_args())
         return self.client
+
+    def _client_args(self) -> dict:
+        return {}
 
     def start(self, system, user_text, tools):
         return {"tools": [{"type": "function", "function": {"name": t["name"], "description": t["description"],
@@ -194,6 +201,7 @@ class GeminiProvider(Provider):
     id, label, sdk = "gemini", "Gemini (Google)", "google.genai"
     env_keys = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
     model_env, model_fallback = "AI_MODEL_GEMINI", "gemini-2.5-pro"
+    suggested_models = ("gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite")
 
     def _c(self):
         if self.client is None:
@@ -227,6 +235,42 @@ class GeminiProvider(Provider):
 
 
 # ── offline demo: a tiny rule-based parser so the flow works without any key ──
+class LocalProvider(OpenAIProvider):
+    """A model running on this machine behind an OpenAI-compatible endpoint (Ollama, LM Studio, llama.cpp server).
+
+    The address comes from LOCAL_LLM_BASE_URL (default: Ollama on this machine), never from the browser.
+    The model needs to support tool calling (for example Llama 3.1 or newer, Qwen 2.5, Mistral).
+    """
+    id, label = "local", "Local model (Ollama / LM Studio)"
+    env_keys = ()
+    model_env, model_fallback = "AI_MODEL_LOCAL", "llama3.1"
+    suggested_models = ("llama3.1", "llama3.2", "qwen2.5", "mistral-nemo")
+    DEFAULT_URL = "http://localhost:11434/v1"
+
+    @classmethod
+    def base_url_value(cls) -> str:
+        return os.environ.get("LOCAL_LLM_BASE_URL", "").strip() or cls.DEFAULT_URL
+
+    @classmethod
+    def configured(cls) -> bool:
+        return True                       # no key needed; whether it is running shows up when you list or use models
+
+    def _client_args(self) -> dict:
+        return {"base_url": self.base_url_value(), "api_key": os.environ.get("LOCAL_LLM_API_KEY") or "local"}
+
+    @classmethod
+    def installed_models(cls) -> list[str]:
+        """Ask the local server which models it has. Empty when it isn't running."""
+        import urllib.request
+        try:
+            req = urllib.request.Request(cls.base_url_value().rstrip("/") + "/models")
+            with urllib.request.urlopen(req, timeout=2) as r:       # noqa: S310 - address is operator-set, not user input
+                data = json.loads(r.read().decode())
+            return sorted({str(m.get("id")) for m in data.get("data", []) if m.get("id")})
+        except Exception:
+            return []
+
+
 class DemoProvider(Provider):
     id, label = "demo", "Demo parser (no AI, simple phrases only)"
     model_fallback = "rules"
@@ -317,12 +361,23 @@ class DemoProvider(Provider):
         h["results"] = results
 
 
-PROVIDERS: dict[str, type[Provider]] = {p.id: p for p in (AnthropicProvider, OpenAIProvider, GeminiProvider, DemoProvider)}
+PROVIDERS: dict[str, type[Provider]] = {p.id: p for p in (AnthropicProvider, OpenAIProvider, GeminiProvider, LocalProvider, DemoProvider)}
 
 
 def provider_status() -> list[dict]:
     return [{"id": p.id, "label": p.label, "configured": p.configured(), "sdk_installed": p.sdk_installed(),
              "default_model": p.default_model()} for p in PROVIDERS.values()]
+
+
+def list_models(pid: str) -> dict:
+    cls = PROVIDERS.get(pid)
+    if cls is None:
+        raise AIError(f"Unknown provider {pid!r}")
+    if cls is LocalProvider:
+        found = cls.installed_models()
+        return {"models": found or list(cls.suggested_models), "live": bool(found),
+                "note": "" if found else f"Couldn't reach a local model server at {cls.base_url_value()} (start Ollama or LM Studio)."}
+    return {"models": list(cls.suggested_models), "live": False, "note": ""}
 
 
 def make_provider(pid: str, model: str | None, world: World) -> Provider:

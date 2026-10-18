@@ -66,7 +66,17 @@ AI_MODEL_GEMINI=gemini-2.5-pro
 AI_EFFORT=medium
 ```
 
-Restart the server, then pick the provider next to the chat box. You can also type a model id there.
+Restart the server, then pick the provider and model next to the chat box. The model box is a dropdown of suggestions that also accepts any model name you type.
+
+**Local models (Llama etc.)**: choose "Local model" in the provider list. No key needed. It talks to any OpenAI-compatible server on your machine and lists the models it has installed.
+
+```
+# Ollama (default, nothing to configure):  ollama pull llama3.1   then pick "llama3.1" in the model box
+# LM Studio / llama.cpp server: add to backend/.env
+LOCAL_LLM_BASE_URL=http://localhost:1234/v1
+```
+
+The model must support tool calling (Llama 3.1 or newer, Qwen 2.5, Mistral Nemo). Small models are weaker at placing things precisely, so check their proposals before accepting.
 
 How it works: `backend/planner.py` holds the tools (`find_space`, `place_item`, `move_item`, `resize_item`, `add_pin`, `move_pin`, `reply_pin`) and the geometry checks; `backend/ai.py` is one provider-neutral agent loop (max 6 rounds) with thin adapters. If a proposal clashes, the problem is returned to the model so it can retry; clearance warnings are reported but allowed. Moving or resizing an existing item is a pending replacement: accepting it retires the old one.
 

@@ -229,7 +229,7 @@
         <input class="field" type="text" id="chat-input" maxlength="2000" placeholder='Ask, e.g. "put the fridge against the left wall of the kitchen"'>
         <button class="btn primary" id="chat-send">Send</button>
         <select class="field" id="ai-provider" title="AI provider"></select>
-        <input class="field" type="text" id="ai-model" placeholder="model (optional)" maxlength="80">
+        <input class="field" type="text" id="ai-model" list="ai-model-list" placeholder="model (pick or type)" maxlength="80" title="Pick a model or type any model name"><datalist id="ai-model-list"></datalist>
       </div>
       <div class="hint" id="ai-hint"></div>
     </div>
@@ -1095,7 +1095,7 @@ function acceptItem(it) {
 }
 
 // ── AI assistant ───────────────────────────────────────────────────────────
-const chat = { log: [], busy: false, providers: [] };
+const chat = { log: [], busy: false, providers: [], modelNote: '' };
 const jsonPost = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 function addMsg(kind, text, rec) {
   chat.log.push({ kind, text, rec });
@@ -1185,11 +1185,30 @@ async function sendChat() {
 }
 $('chat-send').onclick = sendChat;
 $('chat-input').onkeydown = e => { if (e.key === 'Enter') sendChat(); e.stopPropagation(); };
-$('ai-provider').onchange = () => { try { localStorage.setItem('ai-provider', $('ai-provider').value); } catch (_) {} updateAiHint(); };
+$('ai-provider').onchange = () => {
+  try { localStorage.setItem('ai-provider', $('ai-provider').value); } catch (_) {}
+  $('ai-model').value = '';
+  try { localStorage.removeItem('ai-model'); } catch (_) {}
+  loadModels(); updateAiHint();
+};
+async function loadModels() {
+  const id = $('ai-provider').value, list = $('ai-model-list');
+  list.textContent = '';
+  if (!id || id === 'demo') return;
+  try {
+    const r = await api(`/api/ai/providers/${encodeURIComponent(id)}/models`);
+    if ($('ai-provider').value !== id) return;
+    for (const m of r.models) { const o = document.createElement('option'); o.value = m; list.appendChild(o); }
+    chat.modelNote = r.note || '';
+    if (id === 'local' && r.live && !$('ai-model').value) $('ai-model').placeholder = r.models[0];
+    updateAiHint();
+  } catch (_) {}
+}
 $('ai-model').onchange = () => { try { localStorage.setItem('ai-model', $('ai-model').value); } catch (_) {} };
 function updateAiHint() {
   const p = chat.providers.find(x => x.id === $('ai-provider').value);
   $('ai-hint').textContent = !p ? '' : p.id === 'demo' ? 'Demo parser: understands simple phrases only. Pick a provider with a key for a real assistant.'
+    : p.id === 'local' ? (chat.modelNote || 'Local model: runs on this machine, no key needed. Pick a model your server has (it must support tool calling, e.g. Llama 3.1+).')
     : !p.configured ? `Not configured: add the API key to backend/.env and restart.` : !p.sdk_installed ? 'SDK missing: pip install -r backend/requirements-ai.txt' : `Using ${p.label}. Proposals appear as pending items marked ✦.`;
 }
 async function initAi() {
@@ -1205,7 +1224,7 @@ async function initAi() {
     const best = chat.providers.find(p => p.id === saved) || chat.providers.find(p => p.configured && p.id !== 'demo') || chat.providers.find(p => p.id === 'demo');
     if (best) sel.value = best.id;
     try { $('ai-model').value = localStorage.getItem('ai-model') || ''; } catch (_) {}
-    updateAiHint();
+    updateAiHint(); loadModels();
   } catch (_) { $('ai-hint').textContent = 'AI providers unavailable.'; }
 }
 initAi();

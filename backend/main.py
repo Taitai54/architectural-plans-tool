@@ -317,6 +317,14 @@ def ai_providers():
     return ai.provider_status()      # booleans only: keys are never sent to the browser
 
 
+@app.get("/api/ai/providers/{provider_id}/models")
+def ai_models(provider_id: str):
+    try:
+        return ai.list_models(provider_id)
+    except ai.AIError as e:
+        raise HTTPException(404, str(e))
+
+
 @app.post("/api/jobs/{job_id}/pages/{page}/ai")
 def ai_assist(job_id: str, page: int, body: AIRequest):
     d = job_dir(job_id)
@@ -330,7 +338,8 @@ def ai_assist(job_id: str, page: int, body: AIRequest):
     except ai.AIError as e:
         raise HTTPException(400, ai.scrub(str(e)))
     except Exception as e:           # provider/network failures: report, without leaking keys
-        raise HTTPException(502, ai.scrub(f"The AI provider request failed ({type(e).__name__}): {str(e)[:300]}"))
+        hint = " Is your local model server running (Ollama / LM Studio), and does the model support tools?" if body.provider == "local" else ""
+        raise HTTPException(502, ai.scrub(f"The AI provider request failed ({type(e).__name__}): {str(e)[:300]}.{hint}"))
     ops, dropped = validate_ops(result["ops"])
     message = result["message"] + (f" ({dropped} invalid proposal(s) were dropped.)" if dropped else "")
     return {**result, "ops": ops, "message": message, "provider": body.provider, "model": provider.model}
