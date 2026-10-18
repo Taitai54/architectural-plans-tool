@@ -335,3 +335,12 @@ def test_even_odd_ring_keeps_the_hole():
     items = [("re", pymupdf.Rect(0, 0, 100, 100)), ("re", pymupdf.Rect(10, 10, 90, 90))]
     ring = extract._ring(items)
     assert abs(Polygon(ring).buffer(0).area - (10000 - 6400)) < 5
+
+
+def test_parse_scale_ignores_page_counts_and_fractions():
+    import ocr
+    mk = lambda t: [{"text": t, "conf": 1.0, "bbox": [0, 0, 1, 1]}]
+    assert ocr.parse_scale(mk("Sheet 1/3")) is None
+    assert ocr.parse_scale(mk("Rev 1:2")) is None
+    assert ocr.parse_scale(mk("1:50 @ A1"))["ratio"] == 50
+    assert ocr.parse_scale(mk("1/50 @ A1"))["ratio"] == 50

@@ -23,7 +23,7 @@ NOT_ROOM = re.compile(
     r"^(step|new path|existing|svp|rwp|r\.e\.?|rooflight|ceiling slope|slot drain|coffee station|masonry removed|hearth|stove|"
     r"sliding shading panel|line of fascia|decorative brickwork|cl|sd|hd|ef|up|dn|down|north|plan|section|elevation)\b", re.I)
 TAG = re.compile(r"^[A-Z]{1,3}\s?\d{1,3}[a-z]?$")          # D01, W02, ED01
-SCALE_RE = re.compile(r"(?<!\d)1\s*[:/]\s*(\d{1,4})(?!\d)(?:\s*@\s*(A[0-4]))?", re.I)
+SCALE_RE = re.compile(r"(?<!\d)1\s*(?::|/(?=\s*\d{1,4}\s*@))\s*(\d{1,4})(?!\d)(?:\s*@\s*(A[0-4]))?", re.I)
 PAPERS = {"A0": (841, 1189), "A1": (594, 841), "A2": (420, 594), "A3": (297, 420), "A4": (210, 297)}
 
 
@@ -111,7 +111,7 @@ def parse_scale(items: list[dict], page_w_pt: float | None = None, page_h_pt: fl
         if not m:
             continue
         ratio = int(m.group(1))
-        if ratio < 2 or ratio > 5000:
+        if ratio < 5 or ratio > 5000:
             continue
         cands.append({"ratio": ratio, "paper": (m.group(2) or "").upper() or None, "text": it["text"].strip(), "conf": it.get("conf", 1.0)})
     if not cands:
