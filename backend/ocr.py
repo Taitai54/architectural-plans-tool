@@ -103,6 +103,20 @@ def ocr_page(pdf_path: str, page_no: int, regions: list[tuple[float, float, floa
         doc.close()
 
 
+def scale_candidates(items: list[dict]) -> list[dict]:
+    """Every "1:50" / "1:50 @ A1" in the text with where it sits: [{ratio, paper, text, conf, bbox}]."""
+    out = []
+    for it in items:
+        m = SCALE_RE.search(it["text"])
+        if not m:
+            continue
+        ratio = int(m.group(1))
+        if 5 <= ratio <= 5000:
+            out.append({"ratio": ratio, "paper": (m.group(2) or "").upper() or None, "text": it["text"].strip(),
+                        "conf": it.get("conf", 1.0), "bbox": it["bbox"]})
+    return out
+
+
 def parse_scale(items: list[dict], page_w_pt: float | None = None, page_h_pt: float | None = None) -> dict | None:
     """Find "1:50" / "1:50 @ A1" in the text. Returns {ratio, paper, text, page_matches_paper} or None."""
     cands = []

@@ -516,9 +516,10 @@ async function readScale(auto) {
     const r = await api(`/api/jobs/${job}/pages/${page}/read-scale`, { method: 'POST' });
     if (st.jobId !== job || st.page !== page) return;
     if (r.applied) {
-      for (const v of st.scene.views) if (v.kind === 'drawing' && !v.mm_per_pt) { v.ratio = r.found.ratio; v.mm_per_pt = PT_TO_MM * r.found.ratio; }
+      for (const v of st.scene.views) if (r.ratios[v.id] && !v.mm_per_pt) { v.ratio = r.ratios[v.id]; v.mm_per_pt = PT_TO_MM * v.ratio; }
       renderSidebar(); renderOverlay();
-      hint.textContent = `Read "${r.found.text}" from the drawing and set the scale to 1:${r.found.ratio}.`;
+      const own = (r.labelled || []).filter(l => l.ratio !== r.found.ratio).map(l => `${st.scene.views.find(v => v.id === l.view).name}: 1:${l.ratio}`);
+      hint.textContent = `Read "${r.found.text}" from the title block and set the scale to 1:${r.found.ratio}.` + (own.length ? ` Drawings with their own scale label: ${own.join(', ')}.` : '');
     } else if (r.found) {
       hint.textContent = `The drawing mentions "${r.found.text}", but it isn't confirmed for this page size. If that is the plan's scale, type ${r.found.ratio} above and press Set.`;
       $('ratio').value = r.found.ratio;
@@ -1285,8 +1286,8 @@ async function detectRooms() {
     if (st.jobId !== job || st.page !== page) return;
     st.candidates = res.rooms.map(r => ({ id: r.id, name: r.name || '', poly: r.poly.map(p => [p.x, p.y]), area_m2: r.area_m2, boundary: r.boundary, named: r.named, selected: !!r.default_selected }));
     if (res.scale_applied) {
-      for (const v of st.scene.views) if (v.kind === 'drawing' && !v.mm_per_pt) { v.ratio = res.scale_applied.ratio; v.mm_per_pt = PT_TO_MM * res.scale_applied.ratio; }
-      renderSidebar();
+      st.scene = await api(`/api/jobs/${job}/pages/${page}`).then(s => ({ ...st.scene, views: s.views }));
+      renderSidebar(); renderOverlay();
     }
     const parts = [];
     if (res.scale_applied) parts.push(`Scale ${res.scale_applied.text} read from the title block and applied.`);

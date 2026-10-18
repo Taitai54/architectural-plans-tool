@@ -344,3 +344,18 @@ def test_parse_scale_ignores_page_counts_and_fractions():
     assert ocr.parse_scale(mk("Rev 1:2")) is None
     assert ocr.parse_scale(mk("1:50 @ A1"))["ratio"] == 50
     assert ocr.parse_scale(mk("1/50 @ A1"))["ratio"] == 50
+
+
+def test_drawing_with_its_own_scale_label_keeps_it():
+    import autodetect
+    scene = {"width": 2384, "height": 1684,
+             "views": [{"id": "v1", "kind": "drawing", "bbox": [700, 200, 1260, 1280], "mm_per_pt": None},
+                       {"id": "v2", "kind": "drawing", "bbox": [1900, 200, 2160, 580], "mm_per_pt": None},
+                       {"id": "v3", "kind": "titleblock", "bbox": [2016, 1353, 2347, 1649], "mm_per_pt": None}]}
+    items = [{"text": "Scale 1:1250", "conf": 0.9, "bbox": [1901, 585, 2013, 604]},
+             {"text": "1:200 @ A1", "conf": 0.8, "bbox": [2057, 1576, 2132, 1592]}]
+    plan = autodetect.assign_scales(scene, items)
+    assert plan["ratios"] == {"v1": 200, "v2": 1250}
+    # no paper-size confirmation: nothing is applied
+    items[1]["text"] = "1:200"
+    assert autodetect.assign_scales(scene, items)["ratios"] == {}
