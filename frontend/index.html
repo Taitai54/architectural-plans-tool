@@ -167,8 +167,9 @@
 
     <div class="sec" id="sec-rooms" hidden>
       <h2>5 · Rooms &amp; space</h2>
-      <div class="btns" style="margin-top:0"><button class="btn" id="btn-room">Draw room (D)</button><button class="btn" id="dl-csv">Schedule CSV</button></div>
+      <div class="btns" style="margin-top:0"><button class="btn primary" id="btn-detect">Detect rooms</button><button class="btn" id="btn-room">Draw room (D)</button><button class="btn" id="dl-csv">Schedule CSV</button></div>
       <div class="hint" id="room-hint">Draw a room by clicking its corners (they snap to the walls). Click the first corner again, press Enter or double-click to close it. Needs a scale.</div>
+      <div id="candidates"></div>
       <div id="rooms" style="margin-top:8px"></div>
     </div>
 
@@ -263,6 +264,7 @@ const st = {
   selected: null,        // selected item id
   placing: null, placeRot: 0, roomPts: [],
   wallGrid: null, mass: null,
+  candidates: [],        // rooms found automatically, awaiting the user's choice
   pins: [], selectedPin: null, pinFilter: 'all', notesImported: false,
   options: [], activeOption: null, showProposals: true, showRejected: false,
 };
@@ -367,6 +369,7 @@ async function loadPage(n) {
   $('show-prop').checked = true; $('show-rej').checked = false;
   st.selected = null; st.pending = []; st.calib = null; st.roomPts = []; setMode(null);
   chat.log = []; renderChat(); $('chat').classList.add('visible');
+  st.candidates = []; renderCandidates();
   st.catOn = { ...CLEAN, text: 0 };
   st.viewOn = {};
   for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock';
@@ -773,6 +776,12 @@ function buildExtras(g, k) {
     const c = centroid(r.poly), m = roomMetrics(r);
     g.appendChild(haloText(c[0], c[1] - fs * 0.2, fs * 1.2, '#065f46', 700, r.name || 'Room'));
     g.appendChild(haloText(c[0], c[1] + fs * 1.2, fs, '#065f46', 400, m.area == null ? 'set scale' : `${m.area.toFixed(1)} m²`));
+  }
+  for (const c of st.candidates) {
+    g.appendChild(el('polygon', { points: c.poly.map(q => q.join(',')).join(' '), fill: c.selected ? 'rgba(13,148,136,.20)' : 'rgba(13,148,136,.06)', stroke: '#0d9488', 'stroke-width': c.selected ? 2 : 1, 'stroke-dasharray': c.boundary === 'estimated' ? '3 4' : '8 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
+    const ct = centroid(c.poly), cf = 11 / k;
+    g.appendChild(haloText(ct[0], ct[1] - cf * 0.2, cf * 1.1, '#115e59', 700, (c.selected ? '' : '○ ') + (c.name || 'Room?')));
+    g.appendChild(haloText(ct[0], ct[1] + cf * 1.2, cf, '#115e59', 400, `${c.area_m2.toFixed(1)} m²` + (c.boundary === 'estimated' ? ' · estimated edge' : '')));
   }
   for (const it of shownItems()) drawItem(g, it, k, it.id === st.selected, false);
   for (const it of shownItems()) {      // a pending change links back to the item it would replace
@@ -1199,6 +1208,66 @@ async function initAi() {
 }
 initAi();
 
+
+// ── automatic room detection ───────────────────────────────────────────────
+$('btn-detect').onclick = detectRooms;
+async function detectRooms() {
+  if (!st.jobId || $('btn-detect').disabled) return;
+  const job = st.jobId, page = st.page, hint = $('room-hint');
+  $('btn-detect').disabled = true;
+  hint.textContent = 'Reading the drawing and finding rooms… (the first run reads the text and takes about 10 seconds)';
+  try {
+    const res = await api(`/api/jobs/${job}/pages/${page}/detect-rooms`, { method: 'POST' });
+    if (st.jobId !== job || st.page !== page) return;
+    st.candidates = res.rooms.map(r => ({ id: r.id, name: r.name || '', poly: r.poly.map(p => [p.x, p.y]), area_m2: r.area_m2, boundary: r.boundary, named: r.named, selected: !!r.default_selected }));
+    if (res.scale_applied) {
+      for (const v of st.scene.views) if (v.kind === 'drawing' && !v.mm_per_pt) { v.ratio = res.scale_applied.ratio; v.mm_per_pt = PT_TO_MM * res.scale_applied.ratio; }
+      renderSidebar();
+    }
+    const parts = [];
+    if (res.scale_applied) parts.push(`Scale ${res.scale_applied.text} read from the title block and applied.`);
+    parts.push(st.candidates.length ? `Found ${st.candidates.length} region(s). Tick the ones to keep, edit names, then add them.` : 'No rooms found.');
+    parts.push(...res.notes);
+    hint.textContent = parts.join(' ');
+    renderCandidates(); renderOverlay();
+    if (st.candidates.length) fit();
+  } catch (e) { hint.textContent = e.message; }
+  finally { $('btn-detect').disabled = false; }
+}
+function renderCandidates() {
+  const w = $('candidates'); w.textContent = '';
+  if (!st.candidates.length) return;
+  const head = document.createElement('div'); head.className = 'stat'; head.style.cssText = 'font-weight:700;margin-top:8px'; head.textContent = `Detected rooms (${st.candidates.filter(c => c.selected).length} of ${st.candidates.length} selected)`;
+  w.appendChild(head);
+  for (const c of st.candidates) {
+    const row = document.createElement('div'); row.className = 'row';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = c.selected;
+    cb.onchange = () => { c.selected = cb.checked; renderCandidates(); renderOverlay(); };
+    const name = document.createElement('input'); name.type = 'text'; name.value = c.name; name.placeholder = 'name?'; name.maxLength = 80;
+    name.onchange = () => { c.name = name.value.trim(); renderOverlay(); };
+    const meta = document.createElement('span'); meta.className = 'tag' + (c.boundary === 'estimated' ? ' warn' : ''); meta.textContent = `${c.area_m2.toFixed(1)} m²` + (c.boundary === 'estimated' ? ' ~' : '');
+    meta.title = c.boundary === 'estimated' ? 'Part of an open space: the edge between rooms is estimated. Check it.' : 'Bounded by walls';
+    const zoom = document.createElement('button'); zoom.className = 'mini'; zoom.textContent = '⤢'; zoom.title = 'Zoom to this region';
+    zoom.onclick = () => { const xs = c.poly.map(q => q[0]), ys = c.poly.map(q => q[1]); fitBox([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]); };
+    row.append(cb, name, meta, zoom); w.appendChild(row);
+  }
+  const btns = document.createElement('div'); btns.className = 'btns';
+  const mk = (label, fn, cls = 'btn') => { const b = document.createElement('button'); b.className = cls; b.textContent = label; b.onclick = fn; return b; };
+  btns.append(mk('Add selected as rooms', () => addCandidates(false), 'btn primary'), mk('Add all', () => addCandidates(true)), mk('Discard', () => { st.candidates = []; renderCandidates(); renderOverlay(); }));
+  w.appendChild(btns);
+  const note = document.createElement('div'); note.className = 'hint'; note.textContent = 'Click a dashed region on the plan to include or exclude it. "~" marks an estimated edge inside an open-plan space.';
+  w.appendChild(note);
+}
+function addCandidates(all) {
+  const chosen = st.candidates.filter(c => all || c.selected);
+  if (!chosen.length) return;
+  let n = st.rooms.length;
+  for (const c of chosen) st.rooms.push({ id: uid(), name: c.name || `Room ${++n}`, poly: c.poly.map(q => q.slice()) });
+  st.candidates = [];
+  scheduleSave(); renderCandidates(); renderRooms(); renderOptions(); renderOverlay();
+  $('room-hint').textContent = `Added ${chosen.length} room(s). Rename or delete any below.`;
+}
+
 // ── autosave ───────────────────────────────────────────────────────────────
 let saveTimer = null;
 function statePayload() {
@@ -1309,7 +1378,13 @@ svg.addEventListener('pointerup', e => {
   if (dragItem) { if (wasDrag) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); } return; }
   if (wasDrag) return;
   const [x, y] = screenToWorld(e.clientX, e.clientY);
-  if (!st.mode) { if (st.selected) selectItem(null); if (st.selectedPin) selectPin(null); return; }
+  if (!st.mode) {
+    const cand = st.candidates.find(c => pointInPoly(x, y, c.poly));
+    if (cand && !st.selected && !st.selectedPin) { cand.selected = !cand.selected; renderCandidates(); renderOverlay(); return; }
+    if (st.selected) selectItem(null);
+    if (st.selectedPin) selectPin(null);
+    return;
+  }
   if (st.mode === 'place') return placeAt(x, y);
   if (st.mode === 'pin') return addPin(x, y);
   onPick(snap(x, y).p);

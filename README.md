@@ -2,7 +2,7 @@
 
 Upload an architectural PDF and turn it into structured, classified geometry you can declutter, calibrate and measure. Runs locally.
 
-## What it does (Phase 0–4)
+## What it does (Phase 0–5)
 
 | Feature | How |
 |---|---|
@@ -11,6 +11,8 @@ Upload an architectural PDF and turn it into structured, classified geometry you
 | Separate drawings | A sheet is split into its drawings (plan, each elevation) plus the title block, each with its own scale. |
 | Scale | Enter the sheet ratio (right only if printed at full size, e.g. "1:50 @ A1" on an A1 page) or calibrate by clicking two ends of a known length. |
 | Measure | Click two points; they snap to line ends and corners. Lengths are real-world mm/m. |
+| Detect rooms | One click finds the rooms: walls, wall hatching, windows and door swings form closed regions; open-plan areas are split between the room names read from the drawing. Each region comes with a name and area, and you tick the ones to keep. Edges inside open spaces are marked "estimated". |
+| Read the drawing | Room names, door tags and the sheet scale are drawn as outlines in CAD PDFs. With the OCR add-on they are read, and a printed "1:50 @ A1" is applied automatically when the page really is that size. |
 | Rooms | Draw a room by clicking its corners. Area, perimeter, furniture and free floor area are calculated at real scale; rename rooms in the sidebar. |
 | Furniture | Catalogue of typical appliances and furniture at true size (editable, plus custom items). Click to place, drag to move, R to rotate, arrow keys to nudge. A dashed zone shows working / door clearance. |
 | Resize blocks | Select an item and drag the white edge handles (opposite edge stays fixed, sizes snap to 10 mm), or type exact width, depth and clearance. "Save size as preset" adds it to the catalogue. |
@@ -35,6 +37,14 @@ Python 3.10+ is the only requirement.
 ```
 
 The server binds to 127.0.0.1 only. Uploaded plans and extraction results are stored in `backend/outputs/` (git-ignored).
+
+## OCR setup (room names and automatic scale)
+
+```bash
+pip install -r backend/requirements-ocr.txt      # rapidocr-onnxruntime: pure pip, no system packages
+```
+
+Without it, room detection still works but rooms are unnamed and the scale is not read. The first "Detect rooms" on a page reads the text (about 10 seconds for an A1 sheet) and caches it; later runs take about 3 seconds.
 
 ## AI setup
 
@@ -70,6 +80,7 @@ python -m pytest -q
 
 ## Known limits
 
+- Detection depends on closed walls and drawn door swings. Plans with open archways rely on the OCR'd names to split the space, and the split edge is a guess. Small unnamed regions (lobbies, window reveals) are listed but not pre-selected. A WC label that OCR misses leaves that room unnamed.
 - Wall names (top/bottom/left/right) pick the single longest matching edge, so L-shaped rooms only expose one edge per side. Each request may propose at most 40 changes, and `find_space` stops after 8 seconds.
 - The AI adapters are tested against fake clients and the SDKs' own types, not live APIs: confirm each provider once with a real key. The assistant cannot delete items, draw rooms or edit walls, and has no vision of the drawing: it works from the extracted rooms, walls and items.
 

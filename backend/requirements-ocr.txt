@@ -1,0 +1,2 @@
+# Reads the room names, door tags and title-block scale that CAD exports draw as outlines.
+rapidocr-onnxruntime

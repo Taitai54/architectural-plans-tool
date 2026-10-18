@@ -4,6 +4,7 @@ A scene is plain JSON: classified paths, live text, snap points and "views"
 (the separate drawings on a sheet: plan, each elevation, title block ...).
 Coordinates are PDF points, origin top-left, y down.
 """
+import math
 import re
 from typing import Any
 
@@ -35,6 +36,7 @@ VIEW_TOL = 30.0            # gap (pt) below which heavy linework joins into one 
 CORNER_MARGIN = 120.0
 MAX_SNAPS = 60000
 MAX_WALL_SEGS = 40000
+MAX_ARCS = 4000
 MASS_CELL = 8.0            # hatched wall bands are exposed as occupied grid cells of this size (pt)
 
 
@@ -190,6 +192,29 @@ def _segments(d: dict):
             yield q.ll, q.ul
 
 
+def quarter_arc(p0, p1, p2, p3):
+    """If a cubic Bezier is (close to) a quarter circle, return (p0, p3, hinge, radius), else None.
+
+    Door swings are drawn as quarter circles: the centre is the hinge and the radius the leaf width.
+    """
+    chord = math.dist(p0, p3)
+    if chord < 3:
+        return None
+    mx, my = (p0[0] + p3[0]) / 2, (p0[1] + p3[1]) / 2
+    ux, uy = (p3[0] - p0[0]) / chord, (p3[1] - p0[1]) / chord
+    perp = (-uy, ux)
+    bx = (p0[0] + 3 * p1[0] + 3 * p2[0] + p3[0]) / 8
+    by = (p0[1] + 3 * p1[1] + 3 * p2[1] + p3[1]) / 8
+    sign = -1 if (bx - mx) * perp[0] + (by - my) * perp[1] > 0 else 1   # the centre is opposite the bulge
+    r = chord / math.sqrt(2)
+    hinge = (mx + sign * perp[0] * chord / 2, my + sign * perp[1] * chord / 2)
+    if abs(math.dist((bx, by), hinge) - r) > 0.04 * r:
+        return None
+    if abs(math.dist(p0, p1) - 0.5523 * r) > 0.15 * r:
+        return None
+    return p0, p3, hinge, r
+
+
 def _snap_points(d: dict):
     for it in d["items"]:
         k = it[0]
@@ -339,6 +364,8 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
     paths = []
     snaps: dict[tuple[int, int], tuple[float, float]] = {}
     walls: list[float] = []
+    detail: list[float] = []         # medium-weight segments: windows, fixtures (they also close wall openings)
+    arcs: list[float] = []           # quarter-circle arcs (door swings): x0 y0 x1 y1 hingeX hingeY radius
     mass: set[tuple[int, int]] = set()
     counts = {k: 0 for k, _ in CATEGORIES}
     cats = _classify_all(drawings)
@@ -370,6 +397,17 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
             for cx in range(int(r.x0 // MASS_CELL), int(r.x1 // MASS_CELL) + 1):
                 for cy in range(int(r.y0 // MASS_CELL), int(r.y1 // MASS_CELL) + 1):
                     mass.add((cx, cy))
+        if cat == "detail" and len(detail) < MAX_WALL_SEGS * 4:
+            for a, b in _segments(d):
+                if abs(a.x - b.x) + abs(a.y - b.y) > 0.5:
+                    detail += [round(a.x, 1), round(a.y, 1), round(b.x, 1), round(b.y, 1)]
+        if cat != "text" and d["type"] == "s" and len(arcs) < MAX_ARCS * 7:
+            for it in d["items"]:
+                if it[0] == "c":
+                    qa = quarter_arc((it[1].x, it[1].y), (it[2].x, it[2].y), (it[3].x, it[3].y), (it[4].x, it[4].y))
+                    if qa:
+                        arcs += [round(qa[0][0], 1), round(qa[0][1], 1), round(qa[1][0], 1), round(qa[1][1], 1),
+                                 round(qa[2][0], 1), round(qa[2][1], 1), round(qa[3], 1)]
         if cat == "structure" and len(walls) < MAX_WALL_SEGS * 4:
             for a, b in _segments(d):
                 if abs(a.x - b.x) + abs(a.y - b.y) > 0.5:
@@ -388,6 +426,8 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
         "texts": texts,
         "snaps": [c for pt in snaps.values() for c in pt],
         "walls": walls,
+        "detail": detail,
+        "arcs": arcs,
         "mass": {"cell": MASS_CELL, "cells": [c for xy in sorted(mass) for c in xy]},
         "counts": counts,
         "n_chars": n_chars,
