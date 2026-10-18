@@ -249,8 +249,8 @@
 <script>
 const SVGNS = 'http://www.w3.org/2000/svg';
 const PT_TO_MM = 25.4 / 72;
-const CAT_ORDER = ['fills', 'fine', 'hatch', 'dashed', 'detail', 'structure', 'text'];
-const CLEAN = { structure: 1, detail: 1, fills: 1, dashed: 1, hatch: 1, fine: 0, text: 0 };
+const CAT_ORDER = ['wallfill', 'fills', 'fine', 'hatch', 'dashed', 'detail', 'structure', 'text'];
+const CLEAN = { wallfill: 1, structure: 1, detail: 1, fills: 1, dashed: 1, hatch: 0, fine: 0, text: 0 };
 
 const $ = id => document.getElementById(id);
 // Standard sizes come from the backend (backend/catalogue.py) so the viewer and the AI agree.
@@ -422,6 +422,7 @@ function renderScene() {
     const g = el('g', { id: 'cat-' + c });
     groups[c] = g; world.appendChild(g);
   }
+  st.wallfillCount = 0;
   for (const p of sc.paths) {
     const e = el('path', { d: p.d });
     e.setAttribute('class', `c-${p.cat}` + (p.v ? ` v-${p.v}` : ''));
@@ -429,6 +430,10 @@ function renderScene() {
     if (p.f) { e.setAttribute('fill', p.f); if (p.eo) e.setAttribute('fill-rule', 'evenodd'); } else e.setAttribute('fill', 'none');
     if (p.da) e.setAttribute('stroke-dasharray', p.da.join(' '));
     groups[p.cat].appendChild(e);
+    if (p.cat === 'hatch') {      // the same hairlines drawn fat and pale, so dense hatching reads as a solid wall
+      groups.wallfill.appendChild(el('path', { d: p.d, fill: 'none', stroke: '#c4c4c4', 'stroke-width': 2.6, 'stroke-linecap': 'round' }));
+      st.wallfillCount++;
+    }
   }
   const notes = el('g', { id: 'notes' });
   for (const t of sc.texts) {
@@ -489,6 +494,7 @@ function renderSidebar() {
     const c = document.createElement('span'); c.className = 'count'; c.textContent = count.toLocaleString();
     row.append(lab, c); lwrap.appendChild(row);
   };
+  addLayer('Wall fill (solid, from wall hatching)', st.wallfillCount || 0, !!st.catOn.wallfill, v => { st.catOn.wallfill = v ? 1 : 0; });
   for (const cat of sc.categories) addLayer(cat.label, sc.counts[cat.id] || 0, !!st.catOn[cat.id], v => { st.catOn[cat.id] = v ? 1 : 0; });
   addLayer('Live text / notes', sc.texts.length, st.notesOn, v => { st.notesOn = v; });
 
@@ -506,7 +512,7 @@ const ROOM_HINT = 'Draw a room by clicking its corners (they snap to the walls).
 const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 $('preset-clean').onclick = () => { st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
-$('preset-walls').onclick = () => { st.catOn = { structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
+$('preset-walls').onclick = () => { st.catOn = { wallfill: 1, structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
 $('preset-all').onclick = () => { for (const c of CAT_ORDER) st.catOn[c] = 1; for (const v of st.scene.views) st.viewOn[v.id] = true; applyVisibility(); renderSidebar(); };
 
 async function saveScale(body, viewId) {
