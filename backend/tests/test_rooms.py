@@ -326,3 +326,12 @@ def test_clash_checks_see_solid_walls_too():
     assert inside_wall["ok"] is True                                    # open floor is fine
     r = w.check(w.room("r1"), 405, 180, 0, 600, 600, 0)                  # centred on the solid part of the dividing wall
     assert any("wall" in h for h in r["hard"])
+
+
+def test_even_odd_ring_keeps_the_hole():
+    import pymupdf
+    from shapely.geometry import Polygon
+    import extract
+    items = [("re", pymupdf.Rect(0, 0, 100, 100)), ("re", pymupdf.Rect(10, 10, 90, 90))]
+    ring = extract._ring(items)
+    assert abs(Polygon(ring).buffer(0).area - (10000 - 6400)) < 5

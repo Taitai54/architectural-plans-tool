@@ -289,7 +289,9 @@ async function api(url, opts) {
   try { data = await res.json(); } catch (_) {}
   if (!res.ok) {
     const d = data && data.detail;
-    throw new Error(Array.isArray(d) ? d.map(x => x.msg || JSON.stringify(x)).join('; ') : d || `Request failed (${res.status})`);
+    const sug = data && data.scale_suggestion;
+    const extra = sug ? ` (the sheet says ${sug.text}${sug.page_matches_paper === false ? ", but the page isn't that paper size" : ''})` : '';
+    throw new Error((Array.isArray(d) ? d.map(x => x.msg || JSON.stringify(x)).join('; ') : d || `Request failed (${res.status})`) + extra);
   }
   return data;
 }

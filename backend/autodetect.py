@@ -1,5 +1,6 @@
 """Orchestration for automatic room detection: read the text once (cached), find the scale, detect rooms."""
 import json
+import os
 import math
 from pathlib import Path
 from typing import Any
@@ -17,14 +18,21 @@ def text_items(job_dir: Path, page: int, scene: dict) -> tuple[list[dict], dict[
     cache = job_dir / f"ocr-{page}.json"
     items: list[dict] = []
     if cache.exists():
-        items = json.loads(cache.read_text())
-        info["cached"] = True
-    elif info["available"]:
+        try:
+            loaded = json.loads(cache.read_text())
+            items = loaded if isinstance(loaded, list) else []
+        except ValueError:
+            items = []
+        info["cached"] = bool(items)
+    if not items and info["available"]:
         w, h = scene["width"], scene["height"]
         regions = [(max(0.0, v["bbox"][0] - PAD), max(0.0, v["bbox"][1] - PAD), min(w, v["bbox"][2] + PAD), min(h, v["bbox"][3] + PAD))
                    for v in scene["views"]] or [(0.0, 0.0, w, h)]
         items = ocr.ocr_page(str(job_dir / "original.pdf"), page, regions)
-        cache.write_text(json.dumps(items))
+        if items:                                   # an empty result is not worth remembering
+            tmp = cache.with_name(f"{cache.name}.{os.getpid()}.tmp")
+            tmp.write_text(json.dumps(items))
+            tmp.replace(cache)
         info["ran"] = True
     live = [{"text": t["text"], "conf": 1.0, "bbox": t["bbox"]} for t in scene.get("texts", [])]
     merged = ocr._dedupe(items + live)
@@ -67,7 +75,7 @@ def run(job_dir: Path, page: int, scene: dict, apply_scale) -> dict[str, Any]:
         return {"error": "scale", "scale_suggestion": suggestion, "ocr": info}
     res = rooms.detect_rooms(scene, at, ocr.room_labels(items), texts=items)
     for r in res["rooms"]:
-        r["default_selected"] = bool(r["named"] or r["area_m2"] >= 3.0)
+        r["default_selected"] = bool(r.get("plan_confirmed", True) and (r["named"] or r["area_m2"] >= 3.0))
     notes = list(res["notes"])
     if not info["available"]:
         notes.append("Room names could not be read: install the OCR add-on (pip install -r backend/requirements-ocr.txt) and try again.")

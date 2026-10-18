@@ -123,7 +123,31 @@ def _is_filled(d: dict) -> bool:
     return d["type"] in ("f", "fs")
 
 
-def _classify_all(drawings: list[dict]) -> list[str]:
+def stroke_thresholds(drawings: list[dict]) -> tuple[float, float]:
+    """Heavy / medium stroke widths relative to this drawing's own heaviest significant line weight.
+
+    Offices draw walls at 0.7 pt, 0.35 pt or 0.18 pt; what matters is the weight relative to the rest of the sheet.
+    The reference is the weight at which the heaviest strokes reach 3% of all stroke length (ignores a few title lines).
+    """
+    items = []
+    for d in drawings:
+        w = d.get("width") or 0
+        if d["type"] == "s" and w > 0:
+            items.append((w, d["rect"].width + d["rect"].height))
+    total = sum(length for _, length in items)
+    if total <= 0:
+        return HEAVY_W, MEDIUM_W
+    cum = 0.0
+    ref = items[0][0]
+    for w, length in sorted(items, reverse=True):
+        cum += length
+        if cum >= 0.03 * total:
+            ref = w
+            break
+    return max(0.06, 0.7 * ref), max(0.03, 0.34 * ref)
+
+
+def _classify_all(drawings: list[dict], hw: float = HEAVY_W, mw: float = MEDIUM_W) -> list[str]:
     """Assign a declutter category to every drawing.
 
     Outlined text and hatching are recognised by context (many similar neighbours),
@@ -148,7 +172,7 @@ def _classify_all(drawings: list[dict]) -> list[str]:
     # Hatching: short straight hairlines in dense groups.
     hatch_idx = []
     for i, d in enumerate(drawings):
-        if cats[i] or d["type"] != "s" or (d.get("width") or 0) >= MEDIUM_W:
+        if cats[i] or d["type"] != "s" or (d.get("width") or 0) >= mw:
             continue
         r = d["rect"]
         if len(d["items"]) == 1 and d["items"][0][0] == "l" and max(r.width, r.height) <= HATCH_MAX_LEN:
@@ -168,7 +192,7 @@ def _classify_all(drawings: list[dict]) -> list[str]:
             cats[i] = "dashed"
         else:
             w = d.get("width") or 0
-            cats[i] = "structure" if w >= HEAVY_W else "detail" if w >= MEDIUM_W else "fine"
+            cats[i] = "structure" if w >= hw else "detail" if w >= mw else "fine"
     return cats
 
 
@@ -179,7 +203,14 @@ def _segments(d: dict):
         if k == "l":
             yield it[1], it[2]
         elif k == "c":
-            yield it[1], it[4]
+            prev = it[1]
+            for i in range(1, 7):
+                t = i / 6
+                u = 1 - t
+                cur = pymupdf.Point(u ** 3 * it[1].x + 3 * u * u * t * it[2].x + 3 * u * t * t * it[3].x + t ** 3 * it[4].x,
+                                    u ** 3 * it[1].y + 3 * u * u * t * it[2].y + 3 * u * t * t * it[3].y + t ** 3 * it[4].y)
+                yield prev, cur
+                prev = cur
         elif k == "re":
             r = it[1]
             a, b = pymupdf.Point(r.x0, r.y0), pymupdf.Point(r.x1, r.y0)
@@ -197,28 +228,65 @@ def _segments(d: dict):
 
 
 def _ring(items) -> list[tuple[float, float]]:
-    """Outline of a filled path as points (curves sampled coarsely): enough to treat the shape as a solid area."""
-    pts: list[tuple[float, float]] = []
+    """Outline of a filled path as points (curves sampled coarsely): enough to treat the shape as a solid area.
+
+    A path with several subpaths (an outer and inner rectangle drawn as one even-odd path) is filled even-odd, and any
+    holes are joined to the outside by a zero-width seam so the result is still one ring.
+    """
+    rings: list[list[tuple[float, float]]] = []
+    cur: list[tuple[float, float]] = []
+
+    def flush():
+        nonlocal cur
+        if len(cur) >= 3:
+            rings.append(cur)
+        cur = []
+
     for it in items:
         k = it[0]
-        if k == "l":
-            if not pts:
-                pts.append((it[1].x, it[1].y))
-            pts.append((it[2].x, it[2].y))
-        elif k == "c":
-            if not pts:
-                pts.append((it[1].x, it[1].y))
-            for t in (0.25, 0.5, 0.75, 1.0):
-                u = 1 - t
-                pts.append((u ** 3 * it[1].x + 3 * u * u * t * it[2].x + 3 * u * t * t * it[3].x + t ** 3 * it[4].x,
-                            u ** 3 * it[1].y + 3 * u * u * t * it[2].y + 3 * u * t * t * it[3].y + t ** 3 * it[4].y))
-        elif k == "re":
-            r = it[1]
-            pts += [(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)]
-        elif k == "qu":
-            q = it[1]
-            pts += [(q.ul.x, q.ul.y), (q.ur.x, q.ur.y), (q.lr.x, q.lr.y), (q.ll.x, q.ll.y)]
-    return pts
+        if k in ("l", "c"):
+            start = (it[1].x, it[1].y)
+            if cur and math.dist(cur[-1], start) > 0.01:
+                flush()
+            if not cur:
+                cur.append(start)
+            if k == "l":
+                cur.append((it[2].x, it[2].y))
+            else:
+                for t in (0.25, 0.5, 0.75, 1.0):
+                    u = 1 - t
+                    cur.append((u ** 3 * it[1].x + 3 * u * u * t * it[2].x + 3 * u * t * t * it[3].x + t ** 3 * it[4].x,
+                                u ** 3 * it[1].y + 3 * u * u * t * it[2].y + 3 * u * t * t * it[3].y + t ** 3 * it[4].y))
+        elif k in ("re", "qu"):
+            flush()
+            if k == "re":
+                r = it[1]
+                cur = [(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)]
+            else:
+                q = it[1]
+                cur = [(q.ul.x, q.ul.y), (q.ur.x, q.ur.y), (q.lr.x, q.lr.y), (q.ll.x, q.ll.y)]
+            flush()
+    flush()
+    if len(rings) <= 1:
+        return rings[0] if rings else []
+    try:
+        from shapely.geometry import Polygon
+        geom = None
+        for ring in rings:
+            p = Polygon(ring).buffer(0)
+            geom = p if geom is None else geom.symmetric_difference(p)
+        polys = [g for g in getattr(geom, "geoms", [geom]) if g.geom_type == "Polygon" and not g.is_empty]
+        if not polys:
+            return []
+        poly = max(polys, key=lambda g: g.area)
+        out = list(poly.exterior.coords)[:-1]
+        for hole in poly.interiors:
+            hc = list(hole.coords)[:-1]
+            j = min(range(len(out)), key=lambda i: math.dist(out[i], hc[0]))
+            out = out[:j + 1] + hc + [hc[0]] + out[j:]
+        return out
+    except Exception:
+        return max(rings, key=len)
 
 
 def quarter_arc(p0, p1, p2, p3):
@@ -267,7 +335,37 @@ def _snap_points(d: dict):
             yield q.ll
 
 
-def _find_views(page: pymupdf.Page, drawings: list[dict], cats: list[str]) -> list[dict]:
+FRAG_AREA = 0.12     # a cluster smaller than this share of the biggest one is a fragment of a nearby drawing...
+FRAG_GAP = 250.0     # ...if it lies within this many points of it (a wide door or window gap at a large scale)
+
+
+def _gap(a: pymupdf.Rect, b: pymupdf.Rect) -> float:
+    return math.hypot(max(a.x0 - b.x1, b.x0 - a.x1, 0), max(a.y0 - b.y1, b.y0 - a.y1, 0))
+
+
+def _merge_fragments(clusters: list[pymupdf.Rect], corner: pymupdf.Rect) -> list[pymupdf.Rect]:
+    out = [pymupdf.Rect(c) for c in clusters]
+    if len(out) < 2:
+        return out
+    big = max(c.get_area() for c in out)
+    merged = True
+    while merged:
+        merged = False
+        for c in sorted(out, key=lambda c: c.get_area()):
+            if c.get_area() >= FRAG_AREA * big:
+                break
+            if _overlaps(c, corner):                       # the title block is not part of a drawing
+                continue
+            near = [o for o in out if o is not c and o.get_area() > c.get_area() and not _overlaps(o, corner) and _gap(c, o) <= FRAG_GAP]
+            if near:
+                o = min(near, key=lambda o: _gap(c, o))
+                out = [x for x in out if x is not c and x is not o] + [pymupdf.Rect(o) | pymupdf.Rect(c)]
+                merged = True
+                break
+    return out
+
+
+def _find_views(page: pymupdf.Page, drawings: list[dict], cats: list[str], hw: float = HEAVY_W) -> list[dict]:
     """Split the sheet into separate drawings by clustering heavy linework."""
     page_area = page.rect.get_area()
 
@@ -279,7 +377,7 @@ def _find_views(page: pymupdf.Page, drawings: list[dict], cats: list[str]) -> li
 
     heavy = [
         d for d, cat in zip(drawings, cats)
-        if (d["type"] == "s" and (d.get("width") or 0) >= HEAVY_W and max(d["rect"].width, d["rect"].height) < LONG_LINE)
+        if (d["type"] == "s" and (d.get("width") or 0) >= hw and max(d["rect"].width, d["rect"].height) < LONG_LINE)
         or (cat != "text" and solid_wall(d))
     ]
     if not heavy:
@@ -289,6 +387,7 @@ def _find_views(page: pymupdf.Page, drawings: list[dict], cats: list[str]) -> li
 
     pw, ph = page.rect.width, page.rect.height
     corner = pymupdf.Rect(pw - CORNER_MARGIN, ph - CORNER_MARGIN, pw, ph)
+    clusters = _merge_fragments(clusters, corner)
 
     views: list[dict] = []
     for c in clusters:
@@ -396,8 +495,9 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
             })
 
     kind = page_kind(len(drawings), n_chars, page)
-    cats = _classify_all(drawings)
-    views = _find_views(page, drawings, cats) if kind == "vector" else []
+    hw, mw = stroke_thresholds(drawings)
+    cats = _classify_all(drawings, hw, mw)
+    views = _find_views(page, drawings, cats, hw) if kind == "vector" else []
 
     paths = []
     snaps: dict[tuple[int, int], tuple[float, float]] = {}

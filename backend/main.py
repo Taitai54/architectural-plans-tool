@@ -53,7 +53,7 @@ def read_json(path: Path):
 
 
 def write_json(path: Path, data) -> None:
-    tmp = path.with_suffix(".tmp")
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_text(json.dumps(data, separators=(",", ":")))
     tmp.replace(path)
 
@@ -353,7 +353,12 @@ def detect_rooms(job_id: str, page: int):
                 v["ratio"], v["mm_per_pt"] = ratio, PT_TO_MM * ratio
         write_json(d / "meta.json", meta)
 
-    result = autodetect.run(d, page, scene, apply_scale)
+    try:
+        result = autodetect.run(d, page, scene, apply_scale)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"Reading the drawing text failed ({type(e).__name__}); try again.")
     if result.get("error") == "scale":
         return JSONResponse({"detail": "Set the scale for the plan first (section 4), then detect rooms.",
                              "scale_suggestion": result["scale_suggestion"]}, status_code=409)

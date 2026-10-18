@@ -17,7 +17,7 @@ ROOM_WORDS = {
     "kitchen", "hall", "hallway", "entrance", "entr", "bedroom", "bed", "bathroom", "bath", "shower", "wc", "toilet", "cloakroom",
     "cloaks", "clks", "utility", "pantry", "garage", "lounge", "living", "sitting", "dining", "study", "office", "landing",
     "ensuite", "en-suite", "store", "storage", "reception", "porch", "conservatory", "cupboard", "wardrobe", "laundry", "snug",
-    "playroom", "cellar", "loft", "family", "tv", "boot", "plant", "gym", "studio", "nursery", "dressing", "stairs", "vestibule",
+    "playroom", "cellar", "loft", "garden", "room", "annexe", "annex", "extension", "workshop", "summerhouse", "outbuilding", "shed", "sunroom", "orangery", "nook", "family", "tv", "boot", "plant", "gym", "studio", "nursery", "dressing", "stairs", "vestibule",
 }
 NOT_ROOM = re.compile(
     r"^(step|new path|existing|svp|rwp|r\.e\.?|rooflight|ceiling slope|slot drain|coffee station|masonry removed|hearth|stove|"
