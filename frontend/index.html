@@ -29,6 +29,11 @@
   .status.error { background: #fff0f0; color: #cc0000; display: block; }
   .status.success { background: #f0fff4; color: #006622; display: block; }
 
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+  .chip { font: inherit; font-size: 12px; padding: 4px 9px; border: 1px solid #c8ccd4; border-radius: 14px; background: #fff; cursor: grab; }
+  .chip:hover { background: #eef3ff; border-color: #6b8bd6; }
+  .chip.on { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+
   .row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
   .row label { flex: 1; cursor: pointer; display: flex; align-items: center; gap: 8px; }
   .row .count { font-size: 11px; color: #999; }
@@ -153,6 +158,8 @@
       <h2>4 · Scale &amp; measure</h2>
       <div class="row"><span>Active drawing:</span><strong id="active-name"></strong><span class="tag" id="active-tag"></span></div>
       <div class="row">Sheet scale 1 : <input class="field" type="number" id="ratio" min="1" step="1" placeholder="50" style="width:70px"><button class="btn" id="apply-ratio">Set</button><button class="btn" id="read-scale" title="Look for a printed scale such as 1:50 @ A1 in the PDF">Read from drawing</button></div>
+      <div class="hint" style="margin-bottom:4px">Standard scales: click one, or drag it onto a drawing to set that drawing's scale.</div>
+      <div class="chips" id="scale-chips"></div>
       <div class="hint" id="scale-hint"></div>
       <div class="hint" id="paper-hint"></div>
       <div class="btns">
@@ -447,6 +454,7 @@ function renderSidebar() {
   const sc = st.scene;
   for (const id of ['sec-views', 'sec-layers', 'sec-scale', 'sec-rooms', 'sec-furn', 'sec-options', 'sec-review', 'sec-export']) $(id).hidden = false;
   $('sec-views').hidden = sc.views.length === 0;
+  renderScaleChips();
 
   const vwrap = $('views'); vwrap.textContent = '';
   for (const v of sc.views) {
@@ -499,14 +507,28 @@ const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'applicatio
 $('preset-clean').onclick = () => { st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
 $('preset-all').onclick = () => { for (const c of CAT_ORDER) st.catOn[c] = 1; for (const v of st.scene.views) st.viewOn[v.id] = true; applyVisibility(); renderSidebar(); };
 
-async function saveScale(body) {
-  const av = viewData(st.activeView);
+async function saveScale(body, viewId) {
+  const av = viewData(viewId || st.activeView);
   if (!av) return status('upload-status', 'error', 'No drawing selected.');
   try {
     const r = await api(`/api/jobs/${st.jobId}/pages/${st.page}/views/${av.id}`, jsonPut(body));
     av.mm_per_pt = r.mm_per_pt; av.ratio = r.ratio;
-    renderSidebar(); renderOverlay();
+    if (viewId) st.activeView = viewId;
+    renderSidebar(); renderOverlay(); renderScaleChips();
   } catch (e) { status('upload-status', 'error', e.message); }
+}
+const STD_SCALES = [10, 20, 50, 100, 200, 500, 1250];
+function renderScaleChips() {
+  const w = $('scale-chips'); if (!w) return; w.textContent = '';
+  const cur = (viewData(st.activeView) || {}).ratio;
+  for (const r of STD_SCALES) {
+    const b = document.createElement('button'); b.className = 'chip' + (cur === r ? ' on' : ''); b.textContent = `1:${r}`; b.draggable = true;
+    b.title = 'Click to set the active drawing, or drag onto a drawing';
+    b.onclick = () => { $('ratio').value = r; saveScale({ ratio: r }); };
+    b.ondragstart = e => { e.dataTransfer.setData('text/plain', `1:${r}`); e.dataTransfer.effectAllowed = 'copy'; st.dragScale = r; };
+    b.ondragend = () => { st.dragScale = null; };
+    w.appendChild(b);
+  }
 }
 async function readScale(auto) {
   if (!st.jobId || !st.scene || st.scene.kind === 'scan') return;
@@ -1455,11 +1477,20 @@ svg.addEventListener('pointerup', e => {
   onPick(snap(x, y).p);
 });
 stage.addEventListener('dragover', e => {
+  if (st.dragScale) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; return; }
   if (!st.dragPlacing || !st.placing) return;
   e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
   st.hover = screenToWorld(e.clientX, e.clientY); renderOverlay();
 });
 stage.addEventListener('drop', e => {
+  if (st.dragScale) {
+    e.preventDefault(); const r = st.dragScale; st.dragScale = null;
+    const [x, y] = screenToWorld(e.clientX, e.clientY), v = viewAt(x, y);
+    if (!v || v.kind !== 'drawing') { $('scale-hint').textContent = 'Drop a scale onto a drawing (not the title block).'; return; }
+    $('ratio').value = r; saveScale({ ratio: r }, v.id);
+    $('scale-hint').textContent = `Set ${v.name} to 1:${r}.`;
+    return;
+  }
   if (!st.dragPlacing || !st.placing) return;
   e.preventDefault(); st.dragPlacing = false;
   const [x, y] = screenToWorld(e.clientX, e.clientY);
