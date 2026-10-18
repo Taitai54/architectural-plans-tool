@@ -70,6 +70,7 @@ python -m pytest -q
 
 ## Known limits
 
+- Wall names (top/bottom/left/right) pick the single longest matching edge, so L-shaped rooms only expose one edge per side. Each request may propose at most 40 changes, and `find_space` stops after 8 seconds.
 - The AI adapters are tested against fake clients and the SDKs' own types, not live APIs: confirm each provider once with a real key. The assistant cannot delete items, draw rooms or edit walls, and has no vision of the drawing: it works from the extracted rooms, walls and items.
 
 - Detection uses geometry, not layers: CAD PDFs usually carry no layer names, and text is often outlined, so room names and dimension text are hidden by "Text (outlined)" rather than read. OCR is planned.

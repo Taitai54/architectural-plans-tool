@@ -81,10 +81,15 @@ class Provider:
     label = ""
     env_keys: tuple[str, ...] = ()
     sdk = ""
-    default_model = ""
+    model_env = ""
+    model_fallback = ""
+
+    @classmethod
+    def default_model(cls) -> str:
+        return os.environ.get(cls.model_env, cls.model_fallback) if cls.model_env else cls.model_fallback
 
     def __init__(self, model: str | None = None, client: Any = None):
-        self.model = model or self.default_model
+        self.model = model or self.default_model()
         self.client = client
 
     @classmethod
@@ -112,7 +117,7 @@ class Provider:
 class AnthropicProvider(Provider):
     id, label, sdk = "anthropic", "Claude (Anthropic)", "anthropic"
     env_keys = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
-    default_model = os.environ.get("AI_MODEL_ANTHROPIC", "claude-opus-5-5")
+    model_env, model_fallback = "AI_MODEL_ANTHROPIC", "claude-opus-5-5"
 
     @classmethod
     def configured(cls) -> bool:
@@ -148,7 +153,7 @@ class AnthropicProvider(Provider):
 class OpenAIProvider(Provider):
     id, label, sdk = "openai", "OpenAI", "openai"
     env_keys = ("OPENAI_API_KEY",)
-    default_model = os.environ.get("AI_MODEL_OPENAI", "gpt-4o")
+    model_env, model_fallback = "AI_MODEL_OPENAI", "gpt-4o"
 
     def _c(self):
         if self.client is None:
@@ -188,7 +193,7 @@ class OpenAIProvider(Provider):
 class GeminiProvider(Provider):
     id, label, sdk = "gemini", "Gemini (Google)", "google.genai"
     env_keys = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
-    default_model = os.environ.get("AI_MODEL_GEMINI", "gemini-2.5-pro")
+    model_env, model_fallback = "AI_MODEL_GEMINI", "gemini-2.5-pro"
 
     def _c(self):
         if self.client is None:
@@ -224,7 +229,7 @@ class GeminiProvider(Provider):
 # ── offline demo: a tiny rule-based parser so the flow works without any key ──
 class DemoProvider(Provider):
     id, label = "demo", "Demo parser (no AI, simple phrases only)"
-    default_model = "rules"
+    model_fallback = "rules"
 
     @classmethod
     def configured(cls) -> bool:
@@ -317,7 +322,7 @@ PROVIDERS: dict[str, type[Provider]] = {p.id: p for p in (AnthropicProvider, Ope
 
 def provider_status() -> list[dict]:
     return [{"id": p.id, "label": p.label, "configured": p.configured(), "sdk_installed": p.sdk_installed(),
-             "default_model": p.default_model} for p in PROVIDERS.values()]
+             "default_model": p.default_model()} for p in PROVIDERS.values()]
 
 
 def make_provider(pid: str, model: str | None, world: World) -> Provider:

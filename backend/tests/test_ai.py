@@ -321,3 +321,18 @@ def test_openai_ignores_non_function_tool_calls():
     h = p.start("s", "u", TOOLS)
     turn = p.step(h)
     assert [c.id for c in turn.calls] == ["c1"] and [t["id"] for t in h["messages"][-1]["tool_calls"]] == ["c1"]
+
+
+def test_invalid_proposals_are_dropped_before_reaching_the_browser():
+    good = {"op": "add_item", "item": {"id": "a1", "kind": "x", "name": "N", "w": 600, "d": 600, "clear": 0, "x": 1, "y": 1, "rot": 0,
+                                       "option": "o1", "status": "pending", "source": "ai", "note": "", "replaces": ""}}
+    bad = {"op": "add_item", "item": dict(good["item"], clear=-5)}
+    long_reply = {"op": "reply_pin", "id": "p", "text": "x" * 4001}
+    ops, dropped = main.validate_ops([good, bad, long_reply, {"op": "move_pin", "id": "p", "x": 1, "y": 2}, {"op": "weird"}])
+    assert len(ops) == 2 and dropped == 3
+
+
+def test_model_overrides_from_env_apply_at_use_time(monkeypatch):
+    monkeypatch.setenv("AI_MODEL_OPENAI", "gpt-custom")
+    assert ai.OpenAIProvider(None, object()).model == "gpt-custom"
+    assert {p["id"]: p["default_model"] for p in ai.provider_status()}["openai"] == "gpt-custom"

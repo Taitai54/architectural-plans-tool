@@ -232,7 +232,7 @@ class Pin(BaseModel):
     y: float = Field(ge=-1e6, le=1e6)
     text: str = Field(max_length=4000)
     status: Literal["open", "resolved"] = "open"
-    source: Literal["pdf", "user"] = "user"
+    source: Literal["pdf", "user", "ai"] = "user"
     created: float = 0
     thread: list[Comment] = Field(default_factory=list, max_length=200)
 
@@ -282,9 +282,28 @@ class ChatTurn(BaseModel):
 class AIRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=2000)
     provider: str = Field(default="demo", pattern=r"^[a-z]{2,20}$")
-    model: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._:/-]{1,80}$")
+    model: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
     state: PageState
     history: list[ChatTurn] = Field(default_factory=list, max_length=12)
+
+
+def validate_ops(ops: list[dict]) -> tuple[list[dict], int]:
+    """Keep only proposals that would be valid saved state, so one bad op can never break autosave."""
+    good, dropped = [], 0
+    for op in ops:
+        try:
+            if op["op"] == "add_item":
+                Item(**op["item"])
+            elif op["op"] == "add_pin":
+                Pin(**op["pin"])
+            elif op["op"] == "reply_pin":
+                Comment(text=op["text"])
+            elif op["op"] != "move_pin":
+                raise ValueError("unknown op")
+            good.append(op)
+        except Exception:
+            dropped += 1
+    return good, dropped
 
 
 @app.get("/api/catalogue")
@@ -311,7 +330,9 @@ def ai_assist(job_id: str, page: int, body: AIRequest):
         raise HTTPException(400, ai.scrub(str(e)))
     except Exception as e:           # provider/network failures: report, without leaking keys
         raise HTTPException(502, ai.scrub(f"The AI provider request failed ({type(e).__name__}): {str(e)[:300]}"))
-    return {**result, "provider": body.provider, "model": provider.model}
+    ops, dropped = validate_ops(result["ops"])
+    message = result["message"] + (f" ({dropped} invalid proposal(s) were dropped.)" if dropped else "")
+    return {**result, "ops": ops, "message": message, "provider": body.provider, "model": provider.model}
 
 
 @app.get("/api/jobs/{job_id}/original.pdf")

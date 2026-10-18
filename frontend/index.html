@@ -285,7 +285,10 @@ async function api(url, opts) {
   const res = await fetch(url, opts);
   let data = null;
   try { data = await res.json(); } catch (_) {}
-  if (!res.ok) throw new Error((data && data.detail) || `Request failed (${res.status})`);
+  if (!res.ok) {
+    const d = data && data.detail;
+    throw new Error(Array.isArray(d) ? d.map(x => x.msg || JSON.stringify(x)).join('; ') : d || `Request failed (${res.status})`);
+  }
   return data;
 }
 function paperName(wPt, hPt) {
@@ -986,7 +989,7 @@ function renderReview(focusText) {
   const ta = document.createElement('textarea'); ta.className = 'field'; ta.value = q.text; ta.maxLength = 4000; ta.placeholder = 'Describe the question or issue…';
   ta.onchange = () => { q.text = ta.value; scheduleSave(); renderReview(); };
   wrap.appendChild(ta);
-  const meta = document.createElement('div'); meta.className = 'stat'; meta.textContent = (q.source === 'pdf' ? 'Imported from the PDF · ' : 'Added by you · ') + q.status; wrap.appendChild(meta);
+  const meta = document.createElement('div'); meta.className = 'stat'; meta.textContent = (q.source === 'pdf' ? 'Imported from the PDF · ' : q.source === 'ai' ? 'Added by the assistant · ' : 'Added by you · ') + q.status; wrap.appendChild(meta);
   const th = document.createElement('div'); th.className = 'thread';
   for (const c of q.thread) { const d = document.createElement('div'); d.textContent = c.text; const sm = document.createElement('small'); sm.textContent = c.ts ? new Date(c.ts * 1000).toLocaleString() : ''; d.appendChild(sm); th.appendChild(d); }
   wrap.appendChild(th);
@@ -1072,7 +1075,7 @@ function renderOptions() {
 
 
 function acceptItem(it) {
-  it.status = 'accepted';
+  it.status = 'accepted'; if (typeof renderChat === 'function') setTimeout(renderChat, 0);
   if (it.replaces) {                       // accepting a change retires the item it supersedes
     const old = st.items.find(i => i.id === it.replaces);
     if (old) old.status = 'rejected';
@@ -1095,7 +1098,9 @@ function renderChat() {
     if (m.rec && (m.rec.addedItems.length || m.rec.updatedItems.length || m.rec.movedPins.length || m.rec.addedPins.length || m.rec.replies.length)) {
       const acts = document.createElement('div'); acts.className = 'acts';
       const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = label; b.onclick = fn; return b; };
+      const pend = recStillPending(m.rec);
       if (m.rec.done) { const t = document.createElement('span'); t.className = 'hint'; t.textContent = m.rec.done; acts.appendChild(t); }
+      else if (!pend) { const t = document.createElement('span'); t.className = 'hint'; t.textContent = 'Already decided in the item list'; acts.appendChild(t); }
       else {
         if (m.rec.addedItems.length || m.rec.updatedItems.length) acts.appendChild(mk('Accept', () => { acceptFromRec(m.rec); m.rec.done = 'Accepted'; renderChat(); }));
         acts.appendChild(mk('Undo', () => { undoRec(m.rec); m.rec.done = 'Undone'; renderChat(); }));
@@ -1105,6 +1110,9 @@ function renderChat() {
     log.appendChild(d);
   }
   log.scrollTop = log.scrollHeight;
+}
+function recStillPending(rec) {   // once an item has been accepted or rejected elsewhere, undoing it here could lose data
+  return rec.addedItems.concat(rec.updatedItems.map(u => u.id)).every(id => { const it = st.items.find(i => i.id === id); return !it || it.status === 'pending'; });
 }
 function applyOps(ops) {
   const rec = { addedItems: [], updatedItems: [], movedPins: [], addedPins: [], replies: [] };
@@ -1143,7 +1151,8 @@ async function sendChat() {
   const input = $('chat-input'), prompt = input.value.trim();
   if (!prompt || chat.busy || !st.jobId) return;
   chat.busy = true; $('chat-send').disabled = true; input.value = '';
-  const history = chat.log.filter(m => m.kind !== 'err').map(m => ({ role: m.kind === 'user' ? 'user' : 'assistant', text: m.text }));
+  const history = chat.log.filter(m => m.kind !== 'err' && m.text !== 'Thinking…').slice(-6).map(m => ({ role: m.kind === 'user' ? 'user' : 'assistant', text: m.text.slice(0, 2000) }));
+  const job = st.jobId, page = st.page;
   addMsg('user', prompt);
   addMsg('ai', 'Thinking…');
   const thinking = chat.log[chat.log.length - 1];
@@ -1151,12 +1160,14 @@ async function sendChat() {
     const res = await api(`/api/jobs/${st.jobId}/pages/${st.page}/ai`, jsonPost({
       prompt, provider: $('ai-provider').value || 'demo', model: $('ai-model').value.trim() || null, state: statePayload(), history,
     }));
+    if (st.jobId !== job || st.page !== page) return;      // the user moved to another page: do not apply this answer here
     chat.log.splice(chat.log.indexOf(thinking), 1);
     const rec = applyOps(res.ops);
     addMsg('ai', res.message, rec);
     const first = st.items.find(i => i.id === rec.addedItems[0]);
     if (first) { selectItem(first.id); panTo(first.x, first.y); }
   } catch (e) {
+    if (st.jobId !== job || st.page !== page) return;
     chat.log.splice(chat.log.indexOf(thinking), 1);
     addMsg('err', e.message);
   } finally { chat.busy = false; $('chat-send').disabled = false; input.focus(); }
