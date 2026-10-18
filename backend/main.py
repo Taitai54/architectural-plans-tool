@@ -354,14 +354,14 @@ def ai_assist(job_id: str, page: int, body: AIRequest):
     return {**result, "ops": ops, "message": message, "provider": body.provider, "model": provider.model}
 
 
-def _apply_page_scale(d: Path, page: int, scene: dict, ratio: float) -> None:
-    """Store a ratio on every drawing of the page that has no scale yet (the title block never gets one)."""
+def _apply_page_scale(d: Path, page: int, scene: dict, ratios: dict[str, float]) -> None:
+    """Store {view_id: ratio} on drawings that have no scale yet (the title block never gets one)."""
     meta = read_json(d / "meta.json")
     pm = next(m for m in meta["pages"] if m["page"] == page)
     kinds = {v["id"]: v["kind"] for v in scene["views"]}
     for vid, v in pm["views"].items():
-        if not v.get("mm_per_pt") and kinds.get(vid) == "drawing":
-            v["ratio"], v["mm_per_pt"] = ratio, PT_TO_MM * ratio
+        if vid in ratios and not v.get("mm_per_pt") and kinds.get(vid) == "drawing":
+            v["ratio"], v["mm_per_pt"] = ratios[vid], PT_TO_MM * ratios[vid]
     write_json(d / "meta.json", meta)
 
 
@@ -376,13 +376,12 @@ def read_scale(job_id: str, page: int):
         items, info = autodetect.text_items(d, page, scene)
     except Exception as e:
         raise HTTPException(503, f"Reading the drawing text failed ({type(e).__name__}); try again.")
-    found = ocr.parse_scale(items, scene["width"], scene["height"])
-    applied = False
-    drawings = [v for v in scene["views"] if v.get("kind") == "drawing"]
-    if found and found.get("page_matches_paper") is True and any(not v.get("mm_per_pt") for v in drawings):
-        _apply_page_scale(d, page, scene, found["ratio"])
+    plan = autodetect.assign_scales(scene, items)
+    found, applied = plan["found"], False
+    if plan["ratios"]:
+        _apply_page_scale(d, page, scene, plan["ratios"])
         applied = True
-    return {"found": found, "applied": applied, "ocr_available": info["available"]}
+    return {"found": found, "applied": applied, "ratios": plan["ratios"], "labelled": plan["labelled"], "ocr_available": info["available"]}
 
 
 @app.post("/api/jobs/{job_id}/pages/{page}/detect-rooms")
@@ -393,8 +392,8 @@ def detect_rooms(job_id: str, page: int):
     if scene["kind"] == "scan":
         raise HTTPException(400, "This page is a scan, so there are no walls to detect rooms from.")
 
-    def apply_scale(ratio: float) -> None:
-        _apply_page_scale(d, page, scene, ratio)
+    def apply_scale(ratios: dict) -> None:
+        _apply_page_scale(d, page, scene, ratios)
 
     try:
         result = autodetect.run(d, page, scene, apply_scale)

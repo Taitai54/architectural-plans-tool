@@ -40,6 +40,45 @@ def text_items(job_dir: Path, page: int, scene: dict) -> tuple[list[dict], dict[
     return merged, info
 
 
+NEAR_PT = 90.0
+
+
+def _gap(b: list[float], v: list[float]) -> float:
+    dx = max(v[0] - b[2], 0.0, b[0] - v[2])
+    dy = max(v[1] - b[3], 0.0, b[1] - v[3])
+    return math.hypot(dx, dy)
+
+
+def assign_scales(scene: dict, items: list[dict]) -> dict[str, Any]:
+    """Decide a ratio for each drawing without a scale.
+
+    A scale written next to a drawing ("Scale 1:1250" under a location plan) belongs to that drawing; the title block's
+    "1:200 @ A1" covers the others. Nothing is applied unless a scale naming the paper size matches the page.
+    Returns {"found": best candidate or None, "ratios": {view_id: ratio}, "labelled": [...]}.
+    """
+    suggestion = ocr.parse_scale(items, scene["width"], scene["height"])
+    cands = ocr.scale_candidates(items)
+    drawings = [v for v in scene["views"] if v.get("kind") == "drawing"]
+    title = [v for v in scene["views"] if v.get("kind") == "titleblock"]
+    ratios: dict[str, int] = {}
+    labelled: list[dict] = []
+    if not suggestion or suggestion.get("page_matches_paper") is not True:
+        return {"found": suggestion, "ratios": ratios, "labelled": labelled}
+    for v in drawings:
+        if v.get("mm_per_pt"):
+            continue
+        near = [(c, _gap(c["bbox"], v["bbox"])) for c in cands
+                if not any(_gap(c["bbox"], t["bbox"]) < 1 for t in title)]
+        near = [x for x in near if x[1] <= NEAR_PT]
+        if near:
+            c = min(near, key=lambda x: x[1])[0]
+            ratios[v["id"]] = c["ratio"]
+            labelled.append({"view": v["id"], "text": c["text"], "ratio": c["ratio"]})
+        else:
+            ratios[v["id"]] = suggestion["ratio"]
+    return {"found": suggestion, "ratios": ratios, "labelled": labelled}
+
+
 def view_scale_fn(scene: dict):
     """(x, y) -> millimetres per point of the drawing nearest that point, or None when it has no scale."""
     views = [v for v in scene["views"] if v.get("kind") == "drawing"]
@@ -56,20 +95,19 @@ def view_scale_fn(scene: dict):
 
 
 def run(job_dir: Path, page: int, scene: dict, apply_scale) -> dict[str, Any]:
-    """Detect rooms on a page. `apply_scale(ratio)` stores a ratio on every drawing that has no scale yet."""
+    """Detect rooms on a page. `apply_scale({view_id: ratio})` stores the ratios read from the drawing."""
     items, info = text_items(job_dir, page, scene)
-    suggestion = ocr.parse_scale(items, scene["width"], scene["height"])
+    plan = assign_scales(scene, items)
+    suggestion = plan["found"]
     scale_applied = None
     drawings = [v for v in scene["views"] if v.get("kind") == "drawing"]
-    if drawings and any(not v.get("mm_per_pt") for v in drawings):
-        # Only trust a printed scale when it names a paper size and the page really is that size ("1:50 @ A1").
-        if suggestion and suggestion.get("page_matches_paper") is True:
-            apply_scale(suggestion["ratio"])
-            for v in drawings:
-                if not v.get("mm_per_pt"):
-                    v["mm_per_pt"] = PT_TO_MM * suggestion["ratio"]
-                    v["ratio"] = suggestion["ratio"]
-            scale_applied = suggestion
+    if plan["ratios"]:
+        apply_scale(plan["ratios"])
+        for v in scene["views"]:
+            if v["id"] in plan["ratios"]:
+                v["ratio"] = plan["ratios"][v["id"]]
+                v["mm_per_pt"] = PT_TO_MM * v["ratio"]
+        scale_applied = suggestion
     at = view_scale_fn(scene)
     if not any(at((v["bbox"][0] + v["bbox"][2]) / 2, (v["bbox"][1] + v["bbox"][3]) / 2) for v in drawings):
         return {"error": "scale", "scale_suggestion": suggestion, "ocr": info}
