@@ -295,3 +295,29 @@ def test_demo_next_to_resolves_by_kind_word():
     w = make_world(items=[existing])
     out = ai.run_agent(ai.DemoProvider(w), w, "put the dishwasher next to the fridge")
     assert out["ops"] and out["ops"][0]["item"]["name"] == "Dishwasher"
+
+
+def test_gemini_empty_candidate_is_a_refusal_not_a_crash():
+    from google.genai import types
+    p = ai.GeminiProvider("m", NS(models=NS(generate_content=lambda **kw: NS(candidates=[NS(content=None)], function_calls=None))))
+    h = p.start("s", "u", TOOLS)
+    assert p.step(h).refused is True and len(h["contents"]) == 1       # nothing bogus appended
+    p2 = ai.GeminiProvider("m", NS(models=NS(generate_content=lambda **kw: NS(candidates=None, function_calls=None))))
+    assert p2.step(p2.start("s", "u", TOOLS)).refused is True
+
+
+def test_gemini_thought_parts_are_not_part_of_the_answer():
+    from google.genai import types
+    content = types.Content(role="model", parts=[types.Part(text="private reasoning", thought=True), types.Part.from_text(text="Answer.")])
+    p = ai.GeminiProvider("m", NS(models=NS(generate_content=lambda **kw: NS(candidates=[NS(content=content)], function_calls=None))))
+    assert p.step(p.start("s", "u", TOOLS)).text == "Answer."
+
+
+def test_openai_ignores_non_function_tool_calls():
+    custom = NS(id="x", type="custom")                                      # no .function attribute
+    good = NS(id="c1", function=NS(name="find_space", arguments="{}"))
+    client = NS(chat=NS(completions=NS(create=lambda **kw: NS(choices=[NS(message=NS(content="", tool_calls=[custom, good], refusal=None))]))))
+    p = ai.OpenAIProvider("m", client)
+    h = p.start("s", "u", TOOLS)
+    turn = p.step(h)
+    assert [c.id for c in turn.calls] == ["c1"] and [t["id"] for t in h["messages"][-1]["tool_calls"]] == ["c1"]

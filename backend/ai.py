@@ -165,7 +165,8 @@ class OpenAIProvider(Provider):
         resp = self._c().chat.completions.create(model=self.model, messages=h["messages"], tools=h["tools"])
         msg = resp.choices[0].message
         calls = []
-        for tc in (msg.tool_calls or []):
+        fn_calls = [tc for tc in (msg.tool_calls or []) if getattr(tc, "function", None)]   # ignore non-function calls
+        for tc in fn_calls:
             try:
                 args = json.loads(tc.function.arguments or "{}")
             except json.JSONDecodeError:
@@ -175,7 +176,7 @@ class OpenAIProvider(Provider):
         if calls:
             entry["tool_calls"] = [{"id": tc.id, "type": "function",
                                     "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"}}
-                                   for tc in msg.tool_calls]
+                                   for tc in fn_calls]
         h["messages"].append(entry)
         return Turn(msg.content or "", calls, refused=bool(getattr(msg, "refusal", None)))
 
@@ -206,12 +207,12 @@ class GeminiProvider(Provider):
 
     def step(self, h):
         resp = self._c().models.generate_content(model=self.model, contents=h["contents"], config=h["config"])
-        if not resp.candidates:
+        if not resp.candidates or not resp.candidates[0].content:     # blocked prompt, or a SAFETY / empty finish
             return Turn("", [], refused=True)
         content = resp.candidates[0].content
         h["contents"].append(content)
         calls = [ToolCall(fc.id or f"{fc.name}-{i}", fc.name, dict(fc.args or {})) for i, fc in enumerate(resp.function_calls or [])]
-        text = "".join(p.text for p in (content.parts or []) if getattr(p, "text", None))
+        text = "".join(p.text for p in (content.parts or []) if getattr(p, "text", None) and not getattr(p, "thought", None))
         return Turn(text, calls)
 
     def add_results(self, h, turn, results):
