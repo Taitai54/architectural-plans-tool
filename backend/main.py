@@ -31,6 +31,14 @@ VIEW_ID_RE = re.compile(r"^v[0-9]{1,3}$")
 PT_TO_MM = 25.4 / 72.0
 
 
+@app.exception_handler(Exception)
+async def unexpected_error(request, exc):
+    """Show the real error in the page (JSON) and keep the traceback in the terminal."""
+    import traceback
+    traceback.print_exception(exc)
+    return JSONResponse({"detail": f"Server error ({type(exc).__name__}): {str(exc)[:300]}"}, status_code=500)
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     resp = await call_next(request)
