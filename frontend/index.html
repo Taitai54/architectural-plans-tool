@@ -150,7 +150,7 @@
 
     <div class="sec" id="sec-layers" hidden>
       <h2>3 · Declutter</h2>
-      <div class="btns" style="margin:0 0 8px"><button class="btn" id="preset-clean">Clean</button><button class="btn" id="preset-walls" title="Only the heavy wall lines and solid fills">Walls only</button><button class="btn" id="preset-all">Everything</button></div>
+      <div class="btns" style="margin:0 0 8px"><button class="btn" id="preset-clean">Clean</button><button class="btn" id="preset-walls" title="Only the heavy wall lines and solid fills">Walls only</button><button class="btn" id="preset-structure" title="Just the walls: hides furniture, labels, boundaries and loose marks">Structure</button><button class="btn" id="preset-all">Everything</button></div>
       <div id="layers"></div>
     </div>
 
@@ -422,7 +422,7 @@ function renderScene() {
     const g = el('g', { id: 'cat-' + c });
     groups[c] = g; world.appendChild(g);
   }
-  st.wallfillCount = 0;
+  st.wallfillCount = 0; st.tidyItems = [];
   for (const p of sc.paths) {
     const e = el('path', { d: p.d });
     e.setAttribute('class', `c-${p.cat}` + (p.v ? ` v-${p.v}` : ''));
@@ -430,22 +430,92 @@ function renderScene() {
     if (p.f) { e.setAttribute('fill', p.f); if (p.eo) e.setAttribute('fill-rule', 'evenodd'); } else e.setAttribute('fill', 'none');
     if (p.da) e.setAttribute('stroke-dasharray', p.da.join(' '));
     groups[p.cat].appendChild(e);
+    let fat = null;
     if (p.cat === 'hatch') {      // the same hairlines drawn fat and pale, so dense hatching reads as a solid wall
-      groups.wallfill.appendChild(el('path', { d: p.d, fill: 'none', stroke: '#c4c4c4', 'stroke-width': 2.6, 'stroke-linecap': 'round' }));
+      fat = el('path', { d: p.d, fill: 'none', stroke: '#c4c4c4', 'stroke-width': 2.6, 'stroke-linecap': 'round' });
+      groups.wallfill.appendChild(fat);
       st.wallfillCount++;
     }
+    if (p.cat === 'structure' || p.cat === 'hatch' || p.cat === 'fills') st.tidyItems.push({ cat: p.cat, d: p.d, els: fat ? [e, fat] : [e] });
   }
   const notes = el('g', { id: 'notes' });
   for (const t of sc.texts) {
     notes.appendChild(el('text', { x: t.x, y: t.y, 'font-size': t.size, class: 'note' }, t.text));
   }
   world.appendChild(notes);
+  st.tidyHide = null;
   applyVisibility();
   renderOverlay();
 }
 
 let viewStyle = null;
+// "Tidy": keep only the connected structure that reads as walls. Paths are joined when their vertices meet, so loose marks
+// (text glyphs, crosshairs, boundary-line ticks) form small groups and long single lines (site boundaries) form thin ones.
+const TIDY = { minSize: 60, maxAspect: 12, join: 1.5, hatchGap: 4, hatchNear: 12, fillMin: 40 };
+function pathPts(d) {
+  const n = d.match(/-?\d+\.?\d*(?:e-?\d+)?/g) || [], pts = [];
+  for (let i = 0; i + 1 < n.length; i += 2) pts.push([+n[i], +n[i + 1]]);
+  return pts;
+}
+function computeTidy() {
+  const items = st.tidyItems || [], P = TIDY;
+  const parent = items.map((_, i) => i);
+  const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const grid = new Map(), S = P.join * 2;
+  items.forEach((it, i) => {
+    const pts = it.pts = pathPts(it.d);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of pts) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    it.box = pts.length ? [x0, y0, x1, y1] : null;
+    for (const [x, y] of pts) {
+      const cx = Math.floor(x / S), cy = Math.floor(y / S);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const cell = grid.get((cx + dx) + ',' + (cy + dy)); if (!cell) continue;
+        for (const [j, px, py] of cell) if (items[j].cat === it.cat && Math.abs(px - x) <= P.join && Math.abs(py - y) <= P.join) parent[find(i)] = find(j);
+      }
+      const k = cx + ',' + cy; if (!grid.has(k)) grid.set(k, []); grid.get(k).push([i, x, y]);
+    }
+  });
+  // hatching is thousands of separate hairlines: group those whose boxes lie within a few points of each other
+  const hg = new Map(), HC = 16;
+  items.forEach((it, i) => {
+    if (it.cat !== 'hatch' || !it.box) return;
+    const b = it.box;
+    for (let cx = Math.floor((b[0] - P.hatchGap) / HC); cx <= Math.floor((b[2] + P.hatchGap) / HC); cx++)
+      for (let cy = Math.floor((b[1] - P.hatchGap) / HC); cy <= Math.floor((b[3] + P.hatchGap) / HC); cy++) {
+        const k = cx + ',' + cy, cell = hg.get(k);
+        if (!cell) { hg.set(k, [i]); continue; }
+        for (const j of cell) { const o = items[j].box; if (b[0] - P.hatchGap <= o[2] && o[0] - P.hatchGap <= b[2] && b[1] - P.hatchGap <= o[3] && o[1] - P.hatchGap <= b[3]) parent[find(i)] = find(j); }
+        cell.push(i);
+      }
+  });
+  const comps = new Map();
+  items.forEach((it, i) => {
+    if (!it.box) return;
+    const r = find(i), c = comps.get(r) || { idx: [], b: [Infinity, Infinity, -Infinity, -Infinity], cat: it.cat };
+    c.idx.push(i); c.b = [Math.min(c.b[0], it.box[0]), Math.min(c.b[1], it.box[1]), Math.max(c.b[2], it.box[2]), Math.max(c.b[3], it.box[3])]; comps.set(r, c);
+  });
+  const keep = new Set(), structBoxes = [];
+  for (const c of comps.values()) {
+    const w = c.b[2] - c.b[0], h = c.b[3] - c.b[1], big = Math.max(w, h), small = Math.max(Math.min(w, h), 0.5);
+    if (c.cat === 'structure' && big >= P.minSize && big / small <= P.maxAspect) { c.idx.forEach(i => keep.add(i)); structBoxes.push(c.b); }
+    else if (c.cat === 'fills' && big >= P.fillMin) c.idx.forEach(i => keep.add(i));
+  }
+  for (const c of comps.values()) {                                    // hatching stays when it is a real band beside kept walls
+    if (c.cat !== 'hatch') continue;
+    if (Math.max(c.b[2] - c.b[0], c.b[3] - c.b[1]) < P.minSize) continue;
+    const near = structBoxes.some(s => c.b[0] - P.hatchNear <= s[2] && s[0] - P.hatchNear <= c.b[2] && c.b[1] - P.hatchNear <= s[3] && s[1] - P.hatchNear <= c.b[3]);
+    if (near) c.idx.forEach(i => keep.add(i));
+  }
+  st.tidyHide = items.filter((_, i) => !keep.has(i));
+}
+function applyTidy() {
+  if (st.tidyOn && !st.tidyHide) computeTidy();
+  for (const it of st.tidyItems || []) for (const e of it.els) e.style.display = '';
+  if (st.tidyOn) for (const it of st.tidyHide || []) for (const e of it.els) e.style.display = 'none';
+}
 function applyVisibility() {
+  applyTidy();
   for (const c of CAT_ORDER) {
     const g = $('cat-' + c);
     if (g) g.style.display = st.catOn[c] ? '' : 'none';
@@ -491,9 +561,10 @@ function renderSidebar() {
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = on;
     cb.onchange = () => { set(cb.checked); applyVisibility(); };
     lab.append(cb, document.createTextNode(label));
-    const c = document.createElement('span'); c.className = 'count'; c.textContent = count.toLocaleString();
+    const c = document.createElement('span'); c.className = 'count'; c.textContent = count == null ? '' : count.toLocaleString();
     row.append(lab, c); lwrap.appendChild(row);
   };
+  addLayer('Tidy: hide loose fragments and long thin lines', null, !!st.tidyOn, v => { st.tidyOn = v; });
   addLayer('Wall fill (solid, from wall hatching)', st.wallfillCount || 0, !!st.catOn.wallfill, v => { st.catOn.wallfill = v ? 1 : 0; });
   for (const cat of sc.categories) addLayer(cat.label, sc.counts[cat.id] || 0, !!st.catOn[cat.id], v => { st.catOn[cat.id] = v ? 1 : 0; });
   addLayer('Live text / notes', sc.texts.length, st.notesOn, v => { st.notesOn = v; });
@@ -511,9 +582,10 @@ function renderSidebar() {
 const ROOM_HINT = 'Draw a room by clicking its corners (they snap to the walls). Click the first corner again, press Enter or double-click to close it. Needs a scale.';
 const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-$('preset-clean').onclick = () => { st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
-$('preset-walls').onclick = () => { st.catOn = { wallfill: 1, structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
-$('preset-all').onclick = () => { for (const c of CAT_ORDER) st.catOn[c] = 1; for (const v of st.scene.views) st.viewOn[v.id] = true; applyVisibility(); renderSidebar(); };
+$('preset-clean').onclick = () => { st.tidyOn = false; st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
+$('preset-walls').onclick = () => { st.tidyOn = false; st.catOn = { wallfill: 1, structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
+$('preset-structure').onclick = () => { st.catOn = { wallfill: 1, structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; st.tidyOn = true; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
+$('preset-all').onclick = () => { st.tidyOn = false; for (const c of CAT_ORDER) st.catOn[c] = 1; for (const v of st.scene.views) st.viewOn[v.id] = true; applyVisibility(); renderSidebar(); };
 
 async function saveScale(body, viewId) {
   const av = viewData(viewId || st.activeView);
