@@ -164,13 +164,13 @@
       <div class="hint" id="scale-hint"></div>
       <div class="hint" id="paper-hint"></div>
       <div class="btns">
-        <button class="btn" id="btn-measure">Measure (M)</button>
+        <button class="btn" id="btn-measure">Ruler (M)</button>
         <button class="btn" id="btn-calibrate">Calibrate with known length (C)</button>
       </div>
       <div id="calib-form" hidden>
         <div class="row" style="margin-top:8px">Real length <input class="field" type="number" id="calib-len" min="0" step="any" style="width:90px"> mm <button class="btn primary" id="calib-apply">Apply</button></div>
       </div>
-      <div class="hint" id="mode-hint">Measure: click two points (they snap to line ends and corners). Calibrate: click the two ends of something you know the size of, such as the scale bar or a dimensioned wall.</div>
+      <div class="hint" id="mode-hint">Ruler: press on a point and drag to the next one (or click the two points); the distance is shown at the scale you set. Points snap to line ends and corners. Calibrate: click the two ends of something you know the size of, such as the scale bar or a dimensioned wall.</div>
       <div id="measures" style="margin-top:8px"></div>
     </div>
 
@@ -606,7 +606,7 @@ function setMode(m) {
   stage.classList.toggle('measuring', !!m);
   $('btn-measure').classList.toggle('on', m === 'measure');
   $('btn-calibrate').classList.toggle('on', m === 'calibrate');
-  $('mode-hint').textContent = m === 'measure' ? 'Click the first point, then the second. Esc to stop.'
+  $('mode-hint').textContent = m === 'measure' ? 'Press on the first point and drag to the second (or click both). Measure as many as you like; Esc to stop.'
     : m === 'calibrate' ? 'Click both ends of a feature of known length. Esc to cancel.'
     : 'Measure: click two points (they snap to line ends and corners). Calibrate: click the two ends of something you know the size of, such as the scale bar or a dimensioned wall.';
   renderOverlay();
@@ -1477,7 +1477,8 @@ let drag = null;
 svg.addEventListener('pointerdown', e => {
   if (!st.scene) return;
   svg.setPointerCapture(e.pointerId);
-  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null };
+  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null };
+  if (st.mode === 'measure' && st.pending.length === 0) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.ruler = snap(wx, wy).p; }
   if (!st.mode) {
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
     const sel = st.items.find(i => i.id === st.selected), side = sel && shownItems().includes(sel) ? hitHandle(sel, wx, wy) : null;
@@ -1493,6 +1494,10 @@ svg.addEventListener('pointermove', e => {
   if (drag) {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(dx, dy) > 4) drag.moved = true;
+    if (drag.ruler) {
+      if (drag.moved) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); st.pending = [drag.ruler]; st.hover = snap(wx, wy).p; renderOverlay(); }
+      return;
+    }
     if (drag.handle) {
       if (drag.moved) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); resizeFrom(drag.handle.it, drag.handle.it0, drag.handle.side, wx, wy); renderOverlay(); }
       return;
@@ -1514,8 +1519,12 @@ svg.addEventListener('pointermove', e => {
   hud.textContent = `x ${x.toFixed(1)}  y ${y.toFixed(1)} pt` + (v && v.mm_per_pt ? `  ·  ${fmtLen(x * v.mm_per_pt)} , ${fmtLen(y * v.mm_per_pt)} from page origin` : '');
 });
 svg.addEventListener('pointerup', e => {
-  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin); drag = null;
+  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin), ruler = drag && drag.ruler; drag = null;
   if (!st.scene) return;
+  if (ruler && wasDrag) {                      // press-drag-release: the ruler runs from where you pressed to where you let go
+    const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+    st.pending = []; onPick(ruler); onPick(snap(wx, wy).p); return;
+  }
   if (dragOther) { if (wasDrag) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); } return; }
   if (dragItem) { if (wasDrag) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); } return; }
   if (wasDrag) return;
