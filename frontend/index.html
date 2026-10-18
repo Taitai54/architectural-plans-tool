@@ -176,6 +176,7 @@
     <div class="sec" id="sec-furn" hidden>
       <h2>6 · Furniture &amp; appliances</h2>
       <div class="hint" style="margin:0 0 8px">Pick an item, then click where it goes. Drag to move, R to rotate, Delete to remove. The dashed zone in front is working / door clearance.</div>
+      <div class="status" id="cat-hint"></div>
       <div id="catalogue" class="cat-grid"></div>
       <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Add a custom item</summary>
         <div class="row" style="margin-top:6px"><input class="field" type="text" id="c-name" placeholder="Name" maxlength="60" style="flex:1"></div>
@@ -510,7 +511,7 @@ $('apply-ratio').onclick = () => { const r = parseFloat($('ratio').value); if (r
 function setMode(m) {
   st.mode = m; st.pending = []; st.hover = null;
   $('btn-pin').classList.toggle('on', m === 'pin');
-  if (m !== 'place') st.placing = null;
+  if (m !== 'place') { st.placing = null; hideCatHint(); }
   if (m !== 'room') st.roomPts = [];
   if (m !== 'place' && m !== 'room') $('room-hint').textContent = ROOM_HINT;
   $('btn-room').classList.toggle('on', m === 'room');
@@ -804,10 +805,11 @@ function buildExtras(g, k) {
 
 function placeAt(x, y) {
   const s = mmPerPtAt(x, y);
-  if (!s) { $('room-hint').textContent = 'Set the scale for this drawing first (section 4), then place items.'; return; }
+  if (!s) { needScale(); return; }
   const it = { id: uid(), kind: st.placing.kind, name: st.placing.name, w: st.placing.w, d: st.placing.d, clear: st.placing.clear, option: st.activeOption, status: 'pending', x, y, rot: st.placeRot || 0 };
   st.items.push(it);
   setMode(null);
+  hideCatHint();
   selectItem(it.id);
   scheduleSave(); renderRooms();
 }
@@ -829,9 +831,11 @@ function renderCatalogue() {
     b.append(document.createTextNode(c.name));
     const sm = document.createElement('small'); sm.textContent = `${c.w}×${c.d} mm` + (c.custom ? ' · custom' : ''); b.appendChild(sm);
     b.onclick = () => {
-      if (!mmPerPtAt(...centreOfView())) { $('room-hint').textContent = 'Set the scale for this drawing first (section 4), then place items.'; return; }
+      if (!mmPerPtAt(...centreOfView())) { needScale(); return; }
       st.placeRot = 0; setMode('place'); st.placing = c;
-      $('room-hint').textContent = `Placing ${c.name}: click on the plan. R rotates, Esc cancels.`;
+      const msg = `Placing ${c.name}: click on the plan. R rotates, Esc cancels.`;
+      $('room-hint').textContent = msg;
+      const h = $('cat-hint'); h.className = 'status success'; h.textContent = msg;
       renderCatalogue();
     };
     if (c.custom) {
@@ -841,6 +845,14 @@ function renderCatalogue() {
     }
     w.appendChild(b);
   }
+}
+function hideCatHint() { const h = $('cat-hint'); h.className = 'status'; h.textContent = ''; }
+function needScale() {
+  const msg = 'This drawing has no scale yet, so items can\'t be placed at true size. Enter the sheet ratio (e.g. 50 for 1:50) in section 4 and press Set.';
+  const h = $('cat-hint'); h.className = 'status error'; h.textContent = msg;
+  $('room-hint').textContent = msg;
+  const r = $('ratio'); r.scrollIntoView({ block: 'center', behavior: 'smooth' }); r.focus();
+  r.style.outline = '2px solid #dc2626'; setTimeout(() => { r.style.outline = ''; }, 2500);
 }
 function centreOfView() { const v = viewData(st.activeView) || st.scene.views[0]; return v ? [(v.bbox[0] + v.bbox[2]) / 2, (v.bbox[1] + v.bbox[3]) / 2] : [st.scene.width / 2, st.scene.height / 2]; }
 $('c-add').onclick = () => {
