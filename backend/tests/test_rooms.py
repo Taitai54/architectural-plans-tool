@@ -268,3 +268,61 @@ def test_a_scale_that_does_not_match_the_page_size_is_not_applied(client, monkey
 
 def test_scans_and_unknown_jobs(client):
     assert client.post(f"/api/jobs/{'0' * 32}/pages/1/detect-rooms").status_code == 404
+
+
+# ── walls drawn as solid black shapes ("poche") ───────────────────────────────
+def poche_plan_pdf(with_door=True):
+    doc = pymupdf.open()
+    page = doc.new_page(width=842, height=595)
+    sh = page.new_shape()
+    t = 11.0                                                     # wall thickness in points (about 200 mm at 1:50)
+
+    def wall(x0, y0, x1, y1):
+        sh.draw_rect(pymupdf.Rect(x0, y0, x1, y1))
+        sh.finish(color=None, fill=(0, 0, 0))
+    wall(100, 100, 700, 100 + t)                                 # top
+    wall(100, 500 - t, 700, 500)                                 # bottom
+    wall(100, 100, 100 + t, 500)                                 # left
+    wall(700 - t, 100, 700, 500)                                 # right
+    wall(400 - t / 2, 100, 400 + t / 2, 250)                     # dividing wall with a gap for a door
+    wall(400 - t / 2, 340, 400 + t / 2, 500)
+    if with_door:                                                # quarter-circle swing, hinge at the top jamb
+        k = 0.5523 * 90
+        sh.draw_bezier((400, 340), (400 + k, 340), (490, 250 + k), (490, 250))
+        sh.finish(color=(0, 0, 0), width=0.24, closePath=False)
+    sh.commit()
+    return doc.tobytes()
+
+
+def test_solid_black_walls_are_walls():
+    sc = extract.extract_page(pymupdf.open(stream=poche_plan_pdf(), filetype="pdf")[0])
+    assert len(sc["solids"]) == 6 and sc["arcs"]
+    res = rooms.detect_rooms(sc, S, [label("Kitchen", 250, 300), label("Lounge", 550, 300)], texts=PLAN)
+    assert sorted(r["name"] for r in res["rooms"]) == ["Kitchen", "Lounge"]
+    inner = (300 - 11 - 5.5) * (400 - 22) * S * S / 1e6                   # one room between the wall faces
+    assert all(r["area_m2"] == pytest.approx(inner, rel=0.06) for r in res["rooms"])
+    assert all(r["boundary"] == "walls" for r in res["rooms"])           # sealed by poche walls plus the door swing
+
+
+def test_white_and_page_sized_fills_are_not_walls():
+    doc = pymupdf.open()
+    page = doc.new_page(width=842, height=595)
+    sh = page.new_shape()
+    sh.draw_rect(page.rect); sh.finish(color=None, fill=(1, 1, 1))                       # white page background
+    sh.draw_rect(pymupdf.Rect(100, 100, 200, 140)); sh.finish(color=None, fill=(0.9, 0.9, 0.9))   # light grey hatch fill
+    sh.draw_rect(pymupdf.Rect(300, 300, 390, 312)); sh.finish(color=None, fill=(0, 0, 0))         # a real dark wall piece
+    sh.commit()
+    assert len(extract.extract_page(doc[0])["solids"]) == 1
+
+
+def test_clash_checks_see_solid_walls_too():
+    from planner import World
+    sc = extract.extract_page(pymupdf.open(stream=poche_plan_pdf(), filetype="pdf")[0])
+    sc["views"][0]["mm_per_pt"] = S
+    state = {"rooms": [{"id": "r1", "name": "Lounge", "poly": [{"x": 411, "y": 111}, {"x": 689, "y": 111}, {"x": 689, "y": 489}, {"x": 411, "y": 489}]}],
+             "items": [], "pins": []}
+    w = World(sc, state, "o1")
+    inside_wall = w.call("place_item", {"item": "cooker", "room": "r1", "anchor": {"type": "point", "x_mm": 1500, "y_mm": 1500}})
+    assert inside_wall["ok"] is True                                    # open floor is fine
+    r = w.check(w.room("r1"), 405, 180, 0, 600, 600, 0)                  # centred on the solid part of the dividing wall
+    assert any("wall" in h for h in r["hard"])

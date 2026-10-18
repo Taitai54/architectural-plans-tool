@@ -37,6 +37,8 @@ CORNER_MARGIN = 120.0
 MAX_SNAPS = 60000
 MAX_WALL_SEGS = 40000
 MAX_ARCS = 4000
+MAX_SOLIDS = 4000
+DARK_FILL = 0.35          # fills darker than this (0 black .. 1 white) are solid wall poche
 MASS_CELL = 8.0            # hatched wall bands are exposed as occupied grid cells of this size (pt)
 
 
@@ -138,7 +140,9 @@ def _classify_all(drawings: list[dict]) -> list[str]:
     in_word = {i for i, n in zip(glyph_idx, near) if n >= 1}
     for i in glyph_idx:
         d = drawings[i]
-        if max(d["rect"].width, d["rect"].height) < GLYPH_MAX_DIM or i in in_word:
+        w, h = d["rect"].width, d["rect"].height
+        elongated = max(w, h) > 4.5 * max(min(w, h), 0.5)       # a thin wall piece, not a letter
+        if max(w, h) < GLYPH_MAX_DIM or (i in in_word and not elongated):
             cats[i] = "text"
 
     # Hatching: short straight hairlines in dense groups.
@@ -192,6 +196,31 @@ def _segments(d: dict):
             yield q.ll, q.ul
 
 
+def _ring(items) -> list[tuple[float, float]]:
+    """Outline of a filled path as points (curves sampled coarsely): enough to treat the shape as a solid area."""
+    pts: list[tuple[float, float]] = []
+    for it in items:
+        k = it[0]
+        if k == "l":
+            if not pts:
+                pts.append((it[1].x, it[1].y))
+            pts.append((it[2].x, it[2].y))
+        elif k == "c":
+            if not pts:
+                pts.append((it[1].x, it[1].y))
+            for t in (0.25, 0.5, 0.75, 1.0):
+                u = 1 - t
+                pts.append((u ** 3 * it[1].x + 3 * u * u * t * it[2].x + 3 * u * t * t * it[3].x + t ** 3 * it[4].x,
+                            u ** 3 * it[1].y + 3 * u * u * t * it[2].y + 3 * u * t * t * it[3].y + t ** 3 * it[4].y))
+        elif k == "re":
+            r = it[1]
+            pts += [(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)]
+        elif k == "qu":
+            q = it[1]
+            pts += [(q.ul.x, q.ul.y), (q.ur.x, q.ur.y), (q.lr.x, q.lr.y), (q.ll.x, q.ll.y)]
+    return pts
+
+
 def quarter_arc(p0, p1, p2, p3):
     """If a cubic Bezier is (close to) a quarter circle, return (p0, p3, hinge, radius), else None.
 
@@ -238,12 +267,20 @@ def _snap_points(d: dict):
             yield q.ll
 
 
-def _find_views(page: pymupdf.Page, drawings: list[dict]) -> list[dict]:
+def _find_views(page: pymupdf.Page, drawings: list[dict], cats: list[str]) -> list[dict]:
     """Split the sheet into separate drawings by clustering heavy linework."""
+    page_area = page.rect.get_area()
+
+    def solid_wall(d: dict) -> bool:        # a dark filled shape (not text): walls drawn as solid poche
+        fc = d.get("fill")
+        r = d["rect"]
+        return (d["type"] in ("f", "fs") and fc is not None and sum(fc[:3]) / 3 < DARK_FILL
+                and max(r.width, r.height) >= 6 and r.get_area() < 0.5 * page_area)
+
     heavy = [
-        d for d in drawings
-        if d["type"] == "s" and (d.get("width") or 0) >= HEAVY_W
-        and max(d["rect"].width, d["rect"].height) < LONG_LINE
+        d for d, cat in zip(drawings, cats)
+        if (d["type"] == "s" and (d.get("width") or 0) >= HEAVY_W and max(d["rect"].width, d["rect"].height) < LONG_LINE)
+        or (cat != "text" and solid_wall(d))
     ]
     if not heavy:
         return []
@@ -359,16 +396,18 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
             })
 
     kind = page_kind(len(drawings), n_chars, page)
-    views = _find_views(page, drawings) if kind == "vector" else []
+    cats = _classify_all(drawings)
+    views = _find_views(page, drawings, cats) if kind == "vector" else []
 
     paths = []
     snaps: dict[tuple[int, int], tuple[float, float]] = {}
     walls: list[float] = []
     detail: list[float] = []         # medium-weight segments: windows, fixtures (they also close wall openings)
     arcs: list[float] = []           # quarter-circle arcs (door swings): x0 y0 x1 y1 hingeX hingeY radius
+    solids: list[list[float]] = []   # dark filled shapes (walls drawn as solid poche): [x0, y0, x1, y1, ...] rings
+    page_area = page.rect.get_area()
     mass: set[tuple[int, int]] = set()
     counts = {k: 0 for k, _ in CATEGORIES}
-    cats = _classify_all(drawings)
     for d, cat in zip(drawings, cats):
         r = d["rect"]
         if not r.is_valid or r.is_empty and not d["items"]:
@@ -397,6 +436,13 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
             for cx in range(int(r.x0 // MASS_CELL), int(r.x1 // MASS_CELL) + 1):
                 for cy in range(int(r.y0 // MASS_CELL), int(r.y1 // MASS_CELL) + 1):
                     mass.add((cx, cy))
+        if d["type"] in ("f", "fs") and cat != "text" and len(solids) < MAX_SOLIDS:
+            fc = d.get("fill")
+            if fc is not None and sum(fc[:3]) / 3 < DARK_FILL and r.get_area() < 0.5 * page_area and max(r.width, r.height) >= 6:
+                ring = _ring(d["items"])
+                if len(ring) >= 3:
+                    step = max(1, len(ring) // 400)
+                    solids.append([round(v, 1) for p in ring[::step] for v in p])
         if cat == "detail" and len(detail) < MAX_WALL_SEGS * 4:
             for a, b in _segments(d):
                 if abs(a.x - b.x) + abs(a.y - b.y) > 0.5:
@@ -428,6 +474,7 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
         "walls": walls,
         "detail": detail,
         "arcs": arcs,
+        "solids": solids,
         "mass": {"cell": MASS_CELL, "cells": [c for xy in sorted(mass) for c in xy]},
         "counts": counts,
         "n_chars": n_chars,

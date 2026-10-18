@@ -72,6 +72,22 @@ def _mass_boxes(mass: dict, bbox) -> list[Polygon]:
     return out
 
 
+def _solid_polys(rings: list[list[float]], bbox) -> list[Polygon]:
+    out = []
+    for flat in rings:
+        pts = [(flat[i], flat[i + 1]) for i in range(0, len(flat) - 1, 2)]
+        if len(pts) < 3:
+            continue
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        if bbox and not (bbox[0] <= max(xs) and min(xs) <= bbox[2] and bbox[1] <= max(ys) and min(ys) <= bbox[3]):
+            continue
+        g = Polygon(pts)
+        g = g if g.is_valid else g.buffer(0)
+        if not g.is_empty:
+            out.append(g)
+    return out
+
+
 def _wall_fraction(poly: Polygon, solid) -> float:
     ring = poly.exterior
     if ring.length == 0:
@@ -200,7 +216,8 @@ def _detect_view(scene: dict, s: float, labels: list[dict], doors: list[list[flo
     walls = _segments(scene.get("walls", []), bbox)
     details = _segments(scene.get("detail", []), bbox)
     boxes = _mass_boxes(scene.get("mass", {}), bbox)
-    solid = unary_union([w.buffer(0.4) for w in walls] + boxes) if (walls or boxes) else Polygon()
+    poche = _solid_polys(scene.get("solids", []), bbox)          # walls drawn as solid black shapes
+    solid = unary_union([w.buffer(0.4) for w in walls] + boxes + poche) if (walls or boxes or poche) else Polygon()
     details = _drop_dashes(details, solid)
 
     closers = []

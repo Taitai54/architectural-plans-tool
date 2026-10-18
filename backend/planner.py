@@ -114,6 +114,13 @@ class World:
         c = mass["cell"]
         boxes = [box(mass["cells"][i] * c, mass["cells"][i + 1] * c, (mass["cells"][i] + 1) * c, (mass["cells"][i + 1] + 1) * c)
                  for i in range(0, len(mass["cells"]), 2)]
+        for flat in scene.get("solids", []):                      # solid wall poche counts as wall mass too
+            pts = [(flat[i], flat[i + 1]) for i in range(0, len(flat) - 1, 2)]
+            if len(pts) >= 3:
+                g = Polygon(pts)
+                g = g if g.is_valid else g.buffer(0)
+                if not g.is_empty:
+                    boxes.append(g)
         self.mass_tree = STRtree(boxes) if boxes else None
 
         self.rooms: dict[str, Room] = {}
