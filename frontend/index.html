@@ -150,7 +150,7 @@
 
     <div class="sec" id="sec-layers" hidden>
       <h2>3 · Declutter</h2>
-      <div class="btns" style="margin:0 0 8px"><button class="btn" id="preset-clean">Clean</button><button class="btn" id="preset-all">Everything</button></div>
+      <div class="btns" style="margin:0 0 8px"><button class="btn" id="preset-clean">Clean</button><button class="btn" id="preset-walls" title="Only the heavy wall lines and solid fills">Walls only</button><button class="btn" id="preset-all">Everything</button></div>
       <div id="layers"></div>
     </div>
 
@@ -158,6 +158,7 @@
       <h2>4 · Scale &amp; measure</h2>
       <div class="row"><span>Active drawing:</span><strong id="active-name"></strong><span class="tag" id="active-tag"></span></div>
       <div class="row">Sheet scale 1 : <input class="field" type="number" id="ratio" min="1" step="1" placeholder="50" style="width:70px"><button class="btn" id="apply-ratio">Set</button><button class="btn" id="read-scale" title="Look for a printed scale such as 1:50 @ A1 in the PDF">Read from drawing</button></div>
+      <label class="hint" style="display:block;margin-bottom:4px"><input type="checkbox" id="apply-all" checked> Apply to every drawing on the sheet that has no scale yet</label>
       <div class="hint" style="margin-bottom:4px">Standard scales: click one, or drag it onto a drawing to set that drawing's scale.</div>
       <div class="chips" id="scale-chips"></div>
       <div class="hint" id="scale-hint"></div>
@@ -505,6 +506,7 @@ const ROOM_HINT = 'Draw a room by clicking its corners (they snap to the walls).
 const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 $('preset-clean').onclick = () => { st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
+$('preset-walls').onclick = () => { st.catOn = { structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
 $('preset-all').onclick = () => { for (const c of CAT_ORDER) st.catOn[c] = 1; for (const v of st.scene.views) st.viewOn[v.id] = true; applyVisibility(); renderSidebar(); };
 
 async function saveScale(body, viewId) {
@@ -514,6 +516,13 @@ async function saveScale(body, viewId) {
     const r = await api(`/api/jobs/${st.jobId}/pages/${st.page}/views/${av.id}`, jsonPut(body));
     av.mm_per_pt = r.mm_per_pt; av.ratio = r.ratio;
     if (viewId) st.activeView = viewId;
+    if (body.ratio && !viewId && $('apply-all').checked) {          // the other unscaled drawings get the same ratio
+      for (const o of st.scene.views) {
+        if (o.kind !== 'drawing' || o.id === av.id || o.mm_per_pt) continue;
+        const r2 = await api(`/api/jobs/${st.jobId}/pages/${st.page}/views/${o.id}`, jsonPut(body));
+        o.mm_per_pt = r2.mm_per_pt; o.ratio = r2.ratio;
+      }
+    }
     renderSidebar(); renderOverlay(); renderScaleChips();
   } catch (e) { status('upload-status', 'error', e.message); }
 }
@@ -852,7 +861,7 @@ function buildExtras(g, k) {
 
 function placeAt(x, y) {
   const s = mmPerPtAt(x, y);
-  if (!s) { needScale(); return; }
+  if (!s) { needScale(x, y, st.placing); return; }
   const it = { id: uid(), kind: st.placing.kind, name: st.placing.name, w: st.placing.w, d: st.placing.d, clear: st.placing.clear, option: st.activeOption, status: 'pending', x, y, rot: st.placeRot || 0 };
   st.items.push(it);
   setMode(null);
@@ -879,13 +888,13 @@ function renderCatalogue() {
     const sm = document.createElement('small'); sm.textContent = `${c.w}×${c.d} mm` + (c.custom ? ' · custom' : ''); b.appendChild(sm);
     b.draggable = true;
     b.ondragstart = e => {
-      if (!mmPerPtAt(...centreOfView())) { e.preventDefault(); needScale(); return; }
+      if (!anyScale()) { e.preventDefault(); needScale(); return; }
       e.dataTransfer.setData('text/plain', c.name); e.dataTransfer.effectAllowed = 'copy';
       st.placeRot = 0; setMode('place'); st.placing = c; st.dragPlacing = true;
     };
     b.ondragend = () => { if (st.dragPlacing) { st.dragPlacing = false; setMode(null); renderCatalogue(); } };
     b.onclick = () => {
-      if (!mmPerPtAt(...centreOfView())) { needScale(); return; }
+      if (!anyScale()) { needScale(); return; }
       st.placeRot = 0; setMode('place'); st.placing = c;
       const msg = `Placing ${c.name}: click on the plan. R rotates, Esc cancels.`;
       $('room-hint').textContent = msg;
@@ -900,13 +909,22 @@ function renderCatalogue() {
     w.appendChild(b);
   }
 }
+function anyScale() { return st.scene.views.some(v => v.kind === 'drawing' && v.mm_per_pt); }
 function hideCatHint() { const h = $('cat-hint'); h.className = 'status'; h.textContent = ''; }
-function needScale() {
-  const msg = 'This drawing has no scale yet, so items can\'t be placed at true size. Enter the sheet ratio (e.g. 50 for 1:50) in section 4 and press Set.';
-  const h = $('cat-hint'); h.className = 'status error'; h.textContent = msg;
-  $('room-hint').textContent = msg;
-  const r = $('ratio'); r.scrollIntoView({ block: 'center', behavior: 'smooth' }); r.focus();
-  r.style.outline = '2px solid #dc2626'; setTimeout(() => { r.style.outline = ''; }, 2500);
+function needScale(x, y, pendingItem) {
+  const v = (x !== undefined ? viewAt(x, y) : viewData(st.activeView)) || viewData(st.activeView);
+  const h = $('cat-hint'); h.className = 'status error'; h.textContent = '';
+  h.append(document.createTextNode(`${v ? v.name : 'This drawing'} has no scale yet, so items can't be placed at true size. Pick its scale: `));
+  for (const r of [20, 50, 100, 200]) {
+    const b = document.createElement('button'); b.className = 'chip'; b.textContent = `1:${r}`; b.style.margin = '2px';
+    b.onclick = async () => {
+      if (v) await saveScale({ ratio: r }, v.id);
+      hideCatHint();
+      if (pendingItem && x !== undefined && mmPerPtAt(x, y)) { st.placing = pendingItem; placeAt(x, y); }
+    };
+    h.appendChild(b);
+  }
+  $('room-hint').textContent = 'Set the drawing scale (section 4) to place items.';
 }
 function centreOfView() { const v = viewData(st.activeView) || st.scene.views[0]; return v ? [(v.bbox[0] + v.bbox[2]) / 2, (v.bbox[1] + v.bbox[3]) / 2] : [st.scene.width / 2, st.scene.height / 2]; }
 $('c-add').onclick = () => {
@@ -1466,6 +1484,8 @@ svg.addEventListener('pointerup', e => {
   if (wasDrag) return;
   const [x, y] = screenToWorld(e.clientX, e.clientY);
   if (!st.mode) {
+    const cv = viewAt(x, y);
+    if (cv && cv.kind === 'drawing' && cv.id !== st.activeView) { st.activeView = cv.id; renderSidebar(); }
     const cand = st.candidates.find(c => pointInPoly(x, y, c.poly));
     if (cand && !st.selected && !st.selectedPin) { cand.selected = !cand.selected; renderCandidates(); renderOverlay(); return; }
     if (st.selected) selectItem(null);
@@ -1492,8 +1512,9 @@ stage.addEventListener('drop', e => {
     return;
   }
   if (!st.dragPlacing || !st.placing) return;
-  e.preventDefault(); st.dragPlacing = false;
+  e.preventDefault(); const pend = st.placing; st.dragPlacing = false;
   const [x, y] = screenToWorld(e.clientX, e.clientY);
+  if (!mmPerPtAt(x, y)) { setMode(null); needScale(x, y, pend); return; }
   placeAt(x, y); renderCatalogue();
 });
 svg.addEventListener('dblclick', () => { if (st.mode === 'room') closeRoom(); });
