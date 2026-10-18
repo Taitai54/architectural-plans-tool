@@ -526,16 +526,47 @@ async function saveScale(body, viewId) {
     renderSidebar(); renderOverlay(); renderScaleChips();
   } catch (e) { status('upload-status', 'error', e.message); }
 }
+// Press on a button, move onto the plan and release: pointer events instead of the browser's drag and drop,
+// which behaves differently between browsers. A plain click (no movement) still goes to the button's own onclick.
+function pointerDrag(btn, h) {
+  btn.style.touchAction = 'none'; btn.style.userSelect = 'none';
+  btn.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const x0 = e.clientX, y0 = e.clientY; let active = false;
+    const overStage = ev => { const t = document.elementFromPoint(ev.clientX, ev.clientY); return !!t && stage.contains(t); };
+    const move = ev => {
+      if (!active) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return;
+        if (h.start() === false) { cleanup(); return; }
+        active = true; btn.dataset.dragged = '1'; document.body.style.cursor = 'grabbing';
+      }
+      h.move(ev, overStage(ev));
+    };
+    const cleanup = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel); document.body.style.cursor = ''; };
+    const up = ev => { cleanup(); if (active) { h.drop(ev, overStage(ev)); setTimeout(() => { delete btn.dataset.dragged; }, 0); } };
+    const cancel = () => { cleanup(); if (active) { h.drop(null, false); setTimeout(() => { delete btn.dataset.dragged; }, 0); } };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel);
+  });
+}
 const STD_SCALES = [10, 20, 50, 100, 200, 500, 1250];
 function renderScaleChips() {
   const w = $('scale-chips'); if (!w) return; w.textContent = '';
   const cur = (viewData(st.activeView) || {}).ratio;
   for (const r of STD_SCALES) {
-    const b = document.createElement('button'); b.className = 'chip' + (cur === r ? ' on' : ''); b.textContent = `1:${r}`; b.draggable = true;
+    const b = document.createElement('button'); b.className = 'chip' + (cur === r ? ' on' : ''); b.textContent = `1:${r}`;
     b.title = 'Click to set the active drawing, or drag onto a drawing';
-    b.onclick = () => { $('ratio').value = r; saveScale({ ratio: r }); };
-    b.ondragstart = e => { e.dataTransfer.setData('text/plain', `1:${r}`); e.dataTransfer.effectAllowed = 'copy'; st.dragScale = r; };
-    b.ondragend = () => { st.dragScale = null; };
+    b.onclick = () => { if (b.dataset.dragged) return; $('ratio').value = r; saveScale({ ratio: r }); };
+    pointerDrag(b, {
+      start: () => true,
+      move: () => {},
+      drop: (e, over) => {
+        if (!e || !over) return;
+        const [x, y] = screenToWorld(e.clientX, e.clientY), v = viewAt(x, y);
+        if (!v || v.kind !== 'drawing') { $('scale-hint').textContent = 'Drop a scale onto a drawing (not the title block).'; return; }
+        $('ratio').value = r; saveScale({ ratio: r }, v.id);
+        $('scale-hint').textContent = `Set ${v.name} to 1:${r}.`;
+      },
+    });
     w.appendChild(b);
   }
 }
@@ -886,14 +917,20 @@ function renderCatalogue() {
     const b = document.createElement('button'); b.className = 'cat-btn' + (st.placing && st.placing.name === c.name && st.placing.w === c.w ? ' on' : '');
     b.append(document.createTextNode(c.name));
     const sm = document.createElement('small'); sm.textContent = `${c.w}×${c.d} mm` + (c.custom ? ' · custom' : ''); b.appendChild(sm);
-    b.draggable = true;
-    b.ondragstart = e => {
-      if (!anyScale()) { e.preventDefault(); needScale(); return; }
-      e.dataTransfer.setData('text/plain', c.name); e.dataTransfer.effectAllowed = 'copy';
-      st.placeRot = 0; setMode('place'); st.placing = c; st.dragPlacing = true;
-    };
-    b.ondragend = () => { if (st.dragPlacing) { st.dragPlacing = false; setMode(null); renderCatalogue(); } };
+    pointerDrag(b, {
+      start: () => { if (!anyScale()) { needScale(); return false; } st.placeRot = 0; setMode('place'); st.placing = c; st.dragPlacing = true; return true; },
+      move: (e, over) => { st.hover = over ? screenToWorld(e.clientX, e.clientY) : null; renderOverlay(); },
+      drop: (e, over) => {
+        st.dragPlacing = false;
+        if (!e || !over) { setMode(null); renderCatalogue(); return; }
+        if (st.mode !== 'place' || !st.placing) { renderCatalogue(); return; }     // the plan's own pointerup already placed it
+        const [x, y] = screenToWorld(e.clientX, e.clientY);
+        if (!mmPerPtAt(x, y)) { setMode(null); needScale(x, y, c); renderCatalogue(); return; }
+        placeAt(x, y); renderCatalogue();
+      },
+    });
     b.onclick = () => {
+      if (b.dataset.dragged) return;
       if (!anyScale()) { needScale(); return; }
       st.placeRot = 0; setMode('place'); st.placing = c;
       const msg = `Placing ${c.name}: click on the plan. R rotates, Esc cancels.`;
@@ -1495,27 +1532,6 @@ svg.addEventListener('pointerup', e => {
   if (st.mode === 'place') return placeAt(x, y);
   if (st.mode === 'pin') return addPin(x, y);
   onPick(snap(x, y).p);
-});
-stage.addEventListener('dragover', e => {
-  if (st.dragScale) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; return; }
-  if (!st.dragPlacing || !st.placing) return;
-  e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
-  st.hover = screenToWorld(e.clientX, e.clientY); renderOverlay();
-});
-stage.addEventListener('drop', e => {
-  if (st.dragScale) {
-    e.preventDefault(); const r = st.dragScale; st.dragScale = null;
-    const [x, y] = screenToWorld(e.clientX, e.clientY), v = viewAt(x, y);
-    if (!v || v.kind !== 'drawing') { $('scale-hint').textContent = 'Drop a scale onto a drawing (not the title block).'; return; }
-    $('ratio').value = r; saveScale({ ratio: r }, v.id);
-    $('scale-hint').textContent = `Set ${v.name} to 1:${r}.`;
-    return;
-  }
-  if (!st.dragPlacing || !st.placing) return;
-  e.preventDefault(); const pend = st.placing; st.dragPlacing = false;
-  const [x, y] = screenToWorld(e.clientX, e.clientY);
-  if (!mmPerPtAt(x, y)) { setMode(null); needScale(x, y, pend); return; }
-  placeAt(x, y); renderCatalogue();
 });
 svg.addEventListener('dblclick', () => { if (st.mode === 'room') closeRoom(); });
 window.addEventListener('keydown', e => {
