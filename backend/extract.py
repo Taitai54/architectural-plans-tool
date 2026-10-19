@@ -517,6 +517,7 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
     solids: list[list[float]] = []   # dark filled shapes (walls drawn as solid poche): [x0, y0, x1, y1, ...] rings
     page_area = page.rect.get_area()
     mass: set[tuple[int, int]] = set()
+    hatch_lines: list[tuple[tuple[float, float], tuple[float, float]]] = []
     counts = {k: 0 for k, _ in CATEGORIES}
     for d, cat in zip(drawings, cats):
         r = d["rect"]
@@ -542,6 +543,9 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
         if dash:
             p["da"] = dash
         paths.append(p)
+        if cat == "hatch" and len(hatch_lines) < 250000:
+            for a, b in _segments(d):
+                hatch_lines.append(((a.x, a.y), (b.x, b.y)))
         if cat == "hatch" and len(mass) < 60000:
             for cx in range(int(r.x0 // MASS_CELL), int(r.x1 // MASS_CELL) + 1):
                 for cy in range(int(r.y0 // MASS_CELL), int(r.y1 // MASS_CELL) + 1):
@@ -585,10 +589,30 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
         "detail": detail,
         "arcs": arcs,
         "solids": solids,
+        "wallbands": _wall_bands(hatch_lines),
         "mass": {"cell": MASS_CELL, "cells": [c for xy in sorted(mass) for c in xy]},
         "counts": counts,
         "n_chars": n_chars,
     }
+
+
+def _wall_bands(lines) -> list[str]:
+    """Dense wall hatching merged into solid outlines (SVG path data, even-odd), so a hatched wall can be drawn as a clean band."""
+    if not lines:
+        return []
+    try:
+        from shapely import unary_union
+        from shapely.geometry import LineString, Polygon
+        geom = unary_union([LineString(l).buffer(2.4, cap_style=1, join_style=1) for l in lines if l[0] != l[1]])
+        geom = geom.buffer(-3.2, join_style=1).buffer(2.2, join_style=1).simplify(0.8)    # an opening: trims the saw-tooth left by hatch line ends
+    except Exception:
+        return []
+    polys = [g for g in getattr(geom, "geoms", [geom]) if isinstance(g, Polygon) and not g.is_empty and g.area >= 25]
+    out = []
+    for g in sorted(polys, key=lambda p: -p.area)[:4000]:
+        rings = [g.exterior] + list(g.interiors)
+        out.append(" ".join("M" + "L".join(f"{x:.1f} {y:.1f}" for x, y in r.coords[:-1]) + "Z" for r in rings))
+    return out
 
 
 def extract_pdf(pdf_path: str) -> list[dict[str, Any]]:

@@ -430,7 +430,12 @@ function renderScene() {
     const g = el('g', { id: 'cat-' + c });
     groups[c] = g; world.appendChild(g);
   }
-  st.wallfillCount = 0; st.tidyItems = []; st.detailItems = [];
+  st.wallfillCount = 0; st.tidyItems = []; st.detailItems = []; st.bandItems = [];
+  const bands = sc.wallbands || [];
+  for (const d of bands) {            // dense hatching merged into clean outlined bands
+    const e = el('path', { d, fill: '#d6d6d6', 'fill-rule': 'evenodd', stroke: '#2b2b2b', 'stroke-width': 0.9, 'vector-effect': 'non-scaling-stroke', 'stroke-linejoin': 'round' });
+    groups.wallfill.appendChild(e); st.bandItems.push({ d, els: [e] }); st.wallfillCount++;
+  }
   for (const p of sc.paths) {
     const e = el('path', { d: p.d });
     e.setAttribute('class', `c-${p.cat}` + (p.v ? ` v-${p.v}` : ''));
@@ -439,7 +444,7 @@ function renderScene() {
     if (p.da) e.setAttribute('stroke-dasharray', p.da.join(' '));
     groups[p.cat].appendChild(e);
     let fat = null;
-    if (p.cat === 'hatch') {      // the same hairlines drawn fat and pale, so dense hatching reads as a solid wall
+    if (p.cat === 'hatch' && !bands.length) {      // old jobs without merged bands: the same hairlines drawn fat and pale
       fat = el('path', { d: p.d, fill: 'none', stroke: '#c4c4c4', 'stroke-width': 2.6, 'stroke-linecap': 'round' });
       groups.wallfill.appendChild(fat);
       st.wallfillCount++;
@@ -527,6 +532,12 @@ function computeTidy() {
     if (near) c.idx.forEach(i => keep.add(i));
   }
   st.tidyHide = items.filter((_, i) => !keep.has(i));
+  st.bandHide = (st.bandItems || []).filter(b => {
+    const pts = pathPts(b.d); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of pts) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (Math.max(x1 - x0, y1 - y0) < P.minSize) return true;
+    return !structBoxes.some(s => x0 - P.hatchNear <= s[2] && s[0] - P.hatchNear <= x1 && y0 - P.hatchNear <= s[3] && s[1] - P.hatchNear <= y1);
+  });
 }
 // Glazing runs: long thin lines (medium weight) that join two pieces of solid wall, e.g. a glazed screen between wall piers.
 function buildGlass() {
@@ -574,6 +585,8 @@ function leaderLike(it) {
   return it.leader;
 }
 function applyTidy() {
+  for (const b of st.bandItems || []) b.els[0].style.display = '';
+  if (st.tidyOn) { if (!st.bandHide) computeTidy(); for (const b of st.bandHide || []) b.els[0].style.display = 'none'; }
   for (const it of st.detailItems || []) it.els[0].style.display = st.tidyOn && leaderLike(it) ? 'none' : '';
   if (st.tidyOn && !st.tidyHide) computeTidy();
   for (const it of st.tidyItems || []) for (const e of it.els) e.style.display = '';
