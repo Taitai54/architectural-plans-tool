@@ -318,7 +318,8 @@ function viewAt(x, y) {
   for (const v of vs) {
     const [x0, y0, x1, y1] = v.bbox;
     const d = Math.hypot(Math.max(x0 - x, 0, x - x1), Math.max(y0 - y, 0, y - y1));
-    if (d < bd) { bd = d; best = v; }
+    const area = (x1 - x0) * (y1 - y0);
+    if (d < bd || (d === bd && best && area < (best.bbox[2] - best.bbox[0]) * (best.bbox[3] - best.bbox[1]))) { bd = d; best = v; }   // nested drawings: the smaller one wins
   }
   return best;
 }
@@ -347,7 +348,8 @@ async function upload(file) {
   form.append('file', file);
   try {
     const data = await api('/api/upload', { method: 'POST', body: form });
-    st.jobId = data.job_id; st.filename = data.filename; st.pages = data.pages;
+    await flushSave();
+    st.jobId = data.job_id; st.page = 0; st.scene = null; st.filename = data.filename; st.pages = data.pages;
     const sel = $('page-select');
     sel.textContent = '';
     for (const p of data.pages) {
@@ -363,9 +365,15 @@ async function upload(file) {
 }
 $('page-select').onchange = e => loadPage(+e.target.value);
 
+let loadSeq = 0;
 async function loadPage(n) {
-  st.page = n;
-  st.scene = await api(`/api/jobs/${st.jobId}/pages/${n}`);
+  await flushSave();                       // the page we are leaving gets its pending edits first
+  const my = ++loadSeq, job = st.jobId;
+  let scene;
+  try { scene = await api(`/api/jobs/${job}/pages/${n}`); }
+  catch (e) { if (my === loadSeq) { status('upload-status', 'error', e.message); if (st.page) $('page-select').value = st.page; } return; }
+  if (my !== loadSeq || st.jobId !== job) return;     // a newer load (or upload) superseded this one
+  st.page = n; st.scene = scene;
   const sv = st.scene.state || {};
   st.rooms = (sv.rooms || []).map(r => ({ id: r.id, name: r.name, poly: r.poly.map(p => [p.x, p.y]) }));
   st.items = (sv.items || []).map(i => ({ ...i }));
@@ -452,9 +460,18 @@ let viewStyle = null;
 // "Tidy": keep only the connected structure that reads as walls. Paths are joined when their vertices meet, so loose marks
 // (text glyphs, crosshairs, boundary-line ticks) form small groups and long single lines (site boundaries) form thin ones.
 const TIDY = { minSize: 60, maxAspect: 12, join: 1.5, hatchGap: 4, hatchNear: 12, fillMin: 40 };
-function pathPts(d) {
-  const n = d.match(/-?\d+\.?\d*(?:e-?\d+)?/g) || [], pts = [];
-  for (let i = 0; i + 1 < n.length; i += 2) pts.push([+n[i], +n[i + 1]]);
+function pathPts(d) {            // vertices of an absolute path (M L H V C Z), so H and V commands give correct points
+  const tok = d.match(/[A-Za-z]|-?\d*\.?\d+(?:e-?\d+)?/g) || [], pts = [];
+  let cmd = '', args = [], cx = 0, cy = 0;
+  const flush = () => {
+    if (!args.length) return;
+    if (cmd === 'H') for (const x of args) { cx = x; pts.push([cx, cy]); }
+    else if (cmd === 'V') for (const y of args) { cy = y; pts.push([cx, cy]); }
+    else for (let i = 0; i + 1 < args.length; i += 2) { cx = args[i]; cy = args[i + 1]; pts.push([cx, cy]); }
+    args = [];
+  };
+  for (const t of tok) { if (/[A-Za-z]/.test(t)) { flush(); cmd = t.toUpperCase(); } else args.push(+t); }
+  flush();
   return pts;
 }
 function computeTidy() {
@@ -555,12 +572,12 @@ function renderSidebar() {
   }
 
   const lwrap = $('layers'); lwrap.textContent = '';
-  let target = lwrap;
+  let target = lwrap, wallsRef = null;
   const addLayer = (label, count, on, set) => {
     const row = document.createElement('div'); row.className = 'row';
     const lab = document.createElement('label');
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = on;
-    cb.onchange = () => { set(cb.checked); applyVisibility(); };
+    cb.onchange = () => { set(cb.checked); applyVisibility(); if (wallsRef) wallsRef.checked = !!st.catOn.structure && !!st.catOn.wallfill; };
     lab.append(cb, document.createTextNode(label));
     const c = document.createElement('span'); c.className = 'count'; c.textContent = count == null ? '' : count.toLocaleString();
     row.append(lab, c); target.appendChild(row);
@@ -570,8 +587,9 @@ function renderSidebar() {
   const wallsOn = !!st.catOn.structure && !!st.catOn.wallfill;
   const wallsCb = addLayer('Walls (heavy lines + wall fill)', (sc.counts.structure || 0) + (st.wallfillCount || 0), wallsOn, v => { st.catOn.structure = v ? 1 : 0; st.catOn.wallfill = v ? 1 : 0; });
   wallsCb.onchange = () => { st.catOn.structure = wallsCb.checked ? 1 : 0; st.catOn.wallfill = wallsCb.checked ? 1 : 0; applyVisibility(); renderSidebar(); };
+  wallsRef = wallsCb;
   addLayer('Hide loose marks and boundary lines', null, !!st.tidyOn, v => { st.tidyOn = v; });
-  const det = document.createElement('details'); det.style.marginTop = '6px';
+  const det = document.createElement('details'); det.style.marginTop = '6px'; det.open = !!st.layersOpen; det.ontoggle = () => { st.layersOpen = det.open; };
   const sum = document.createElement('summary'); sum.className = 'hint'; sum.style.cursor = 'pointer'; sum.textContent = 'All layers (fine control)';
   det.appendChild(sum); lwrap.appendChild(det); target = det;
   addLayer('Wall fill (solid, from wall hatching)', st.wallfillCount || 0, !!st.catOn.wallfill, v => { st.catOn.wallfill = v ? 1 : 0; });
@@ -599,19 +617,21 @@ $('preset-all').onclick = () => { st.tidyOn = false; for (const c of CAT_ORDER) 
 async function saveScale(body, viewId) {
   const av = viewData(viewId || st.activeView);
   if (!av) return status('upload-status', 'error', 'No drawing selected.');
+  const job = st.jobId, page = st.page, scene = st.scene;
+  const same = () => st.jobId === job && st.page === page && st.scene === scene;
   try {
-    const r = await api(`/api/jobs/${st.jobId}/pages/${st.page}/views/${av.id}`, jsonPut(body));
+    const r = await api(`/api/jobs/${job}/pages/${page}/views/${av.id}`, jsonPut(body));
     av.mm_per_pt = r.mm_per_pt; av.ratio = r.ratio;
-    if (viewId) st.activeView = viewId;
+    if (viewId && same()) st.activeView = viewId;
     if (body.ratio && !viewId && $('apply-all').checked) {          // the other unscaled drawings get the same ratio
-      for (const o of st.scene.views) {
+      for (const o of scene.views) {
         if (o.kind !== 'drawing' || o.id === av.id || o.mm_per_pt) continue;
-        const r2 = await api(`/api/jobs/${st.jobId}/pages/${st.page}/views/${o.id}`, jsonPut(body));
+        const r2 = await api(`/api/jobs/${job}/pages/${page}/views/${o.id}`, jsonPut(body));
         o.mm_per_pt = r2.mm_per_pt; o.ratio = r2.ratio;
       }
     }
-    renderSidebar(); renderOverlay(); renderScaleChips();
   } catch (e) { status('upload-status', 'error', e.message); }
+  finally { if (same()) { renderSidebar(); renderOverlay(); renderScaleChips(); } }
 }
 // Press on a button, move onto the plan and release: pointer events instead of the browser's drag and drop,
 // which behaves differently between browsers. A plain click (no movement) still goes to the button's own onclick.
@@ -773,6 +793,7 @@ function onPick(p) {
   st.pending.push(p);
   if (st.pending.length < 2) return renderOverlay();
   const [a, b] = st.pending; st.pending = [];
+  if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.5) return renderOverlay();      // same point twice
   const view = viewAt(a[0], a[1]);
   if (st.mode === 'measure') { st.measures.push({ a, b, view }); renderMeasures(); scheduleSave(); }
   else if (st.mode === 'calibrate') { st.calib = { a, b, view }; $('calib-form').hidden = false; $('calib-len').focus(); }
@@ -1499,6 +1520,7 @@ function addCandidates(all) {
 
 // ── autosave ───────────────────────────────────────────────────────────────
 let saveTimer = null;
+const clampNum = (v, lo, hi) => Math.min(hi, Math.max(lo, Number.isFinite(+v) ? +v : lo));
 function statePayload() {
   const pt = q => ({ x: q[0], y: q[1] });
   return {
@@ -1507,20 +1529,32 @@ function statePayload() {
     active_option: st.activeOption || '',
     notes_imported: st.notesImported,
     rooms: st.rooms.map(r => ({ id: r.id, name: r.name, poly: r.poly.map(pt) })),
-    items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: i.w, d: i.d, clear: i.clear, option: i.option, status: i.status, source: i.source || 'user', note: i.note || '', replaces: i.replaces || '', x: i.x, y: i.y, rot: i.rot || 0 })),
+    items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: clampNum(i.w, 1, 50000), d: clampNum(i.d, 1, 50000), clear: clampNum(i.clear, 0, 10000), option: i.option, status: i.status, source: i.source || 'user', note: i.note || '', replaces: i.replaces || '', x: i.x, y: i.y, rot: i.rot || 0 })),
     measures: st.measures.map(m => ({ a: pt(m.a), b: pt(m.b) })),
-    custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: c.w, d: c.d, clear: c.clear })),
+    custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: clampNum(c.w, 1, 50000), d: clampNum(c.d, 1, 50000), clear: clampNum(c.clear, 0, 10000) })),
   };
 }
+// The payload is captured when the edit happens (not when the timer fires), together with the job and page it belongs to,
+// so switching page can never send one page's state to another.
+let pendingSave = null;
 function scheduleSave() {
-  if (!st.jobId) return;
+  if (!st.jobId || !st.scene) return;
   clearTimeout(saveTimer);
-  const job = st.jobId, page = st.page;
-  saveTimer = setTimeout(async () => {
-    try { await api(`/api/jobs/${job}/pages/${page}/state`, jsonPut(statePayload())); }
-    catch (e) { status('upload-status', 'error', 'Could not save: ' + e.message); }
-  }, 500);
+  pendingSave = { job: st.jobId, page: st.page, body: statePayload() };
+  saveTimer = setTimeout(flushSave, 500);
 }
+async function flushSave() {
+  clearTimeout(saveTimer);
+  const p = pendingSave; pendingSave = null;
+  if (!p) return;
+  try { await api(`/api/jobs/${p.job}/pages/${p.page}/state`, jsonPut(p.body)); }
+  catch (e) { status('upload-status', 'error', 'Could not save: ' + e.message); }
+}
+window.addEventListener('beforeunload', () => {
+  if (!pendingSave) return;
+  const p = pendingSave; pendingSave = null;
+  try { fetch(`/api/jobs/${p.job}/pages/${p.page}/state`, { ...jsonPut(p.body), keepalive: true }); } catch (_) {}
+});
 
 // ── pan / zoom ─────────────────────────────────────────────────────────────
 function applyView() {
@@ -1564,7 +1598,8 @@ let drag = null;
 svg.addEventListener('pointerdown', e => {
   if (!st.scene) return;
   svg.setPointerCapture(e.pointerId);
-  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null };
+  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null, button: e.button };
+  if (e.button !== 0) return;               // right and middle buttons only pan
   if (st.mode === 'measure' && st.pending.length === 0) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.ruler = snap(wx, wy).p; }
   if (!st.mode) {
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
@@ -1606,6 +1641,8 @@ svg.addEventListener('pointermove', e => {
   hud.textContent = `x ${x.toFixed(1)}  y ${y.toFixed(1)} pt` + (v && v.mm_per_pt ? `  ·  ${fmtLen(x * v.mm_per_pt)} , ${fmtLen(y * v.mm_per_pt)} from page origin` : '');
 });
 svg.addEventListener('pointerup', e => {
+  if (!drag) return;                         // the press did not start on the plan (e.g. a chip or item dropped here)
+  if (drag.button !== 0) { drag = null; return; }
   const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin), ruler = drag && drag.ruler; drag = null;
   if (!st.scene) return;
   if (ruler && wasDrag) {                      // press-drag-release: the ruler runs from where you pressed to where you let go
@@ -1629,9 +1666,15 @@ svg.addEventListener('pointerup', e => {
   if (st.mode === 'pin') return addPin(x, y);
   onPick(snap(x, y).p);
 });
+svg.addEventListener('pointercancel', () => {
+  const moved = drag && drag.moved && (drag.item || drag.handle || drag.pin);
+  drag = null; st.pending = []; st.hover = null; renderOverlay();
+  if (moved) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); }
+});
 svg.addEventListener('dblclick', () => { if (st.mode === 'room') closeRoom(); });
 window.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   const sel = st.items.find(i => i.id === st.selected);
   if (e.key === 'Escape') { if (st.mode) setMode(null); else selectItem(null); selectPin(null); }
   else if (e.key === 'Enter' && st.mode === 'room') closeRoom();
@@ -1641,7 +1684,7 @@ window.addEventListener('keydown', e => {
   else if ((e.key === 'r' || e.key === 'R') && sel) rotateSelected();
   else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) deleteSelected();
   else if (sel && e.key.startsWith('Arrow')) { e.preventDefault(); nudge(sel, e.key, e.shiftKey ? 100 : 10); }
-  else if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey) $('btn-measure').click();
+  else if (e.key === 'm' || e.key === 'M') $('btn-measure').click();
   else if (e.key === 'c' || e.key === 'C') $('btn-calibrate').click();
   else if (e.key === 'f' || e.key === 'F') fit();
 });
