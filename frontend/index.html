@@ -555,6 +555,7 @@ function renderSidebar() {
   }
 
   const lwrap = $('layers'); lwrap.textContent = '';
+  let target = lwrap;
   const addLayer = (label, count, on, set) => {
     const row = document.createElement('div'); row.className = 'row';
     const lab = document.createElement('label');
@@ -562,9 +563,17 @@ function renderSidebar() {
     cb.onchange = () => { set(cb.checked); applyVisibility(); };
     lab.append(cb, document.createTextNode(label));
     const c = document.createElement('span'); c.className = 'count'; c.textContent = count == null ? '' : count.toLocaleString();
-    row.append(lab, c); lwrap.appendChild(row);
+    row.append(lab, c); target.appendChild(row);
+    return cb;
   };
-  addLayer('Tidy: hide loose fragments and long thin lines', null, !!st.tidyOn, v => { st.tidyOn = v; });
+  // Walls are drawn two ways in a CAD export (heavy outlines and dense hatching), so one switch controls both.
+  const wallsOn = !!st.catOn.structure && !!st.catOn.wallfill;
+  const wallsCb = addLayer('Walls (heavy lines + wall fill)', (sc.counts.structure || 0) + (st.wallfillCount || 0), wallsOn, v => { st.catOn.structure = v ? 1 : 0; st.catOn.wallfill = v ? 1 : 0; });
+  wallsCb.onchange = () => { st.catOn.structure = wallsCb.checked ? 1 : 0; st.catOn.wallfill = wallsCb.checked ? 1 : 0; applyVisibility(); renderSidebar(); };
+  addLayer('Hide loose marks and boundary lines', null, !!st.tidyOn, v => { st.tidyOn = v; });
+  const det = document.createElement('details'); det.style.marginTop = '6px';
+  const sum = document.createElement('summary'); sum.className = 'hint'; sum.style.cursor = 'pointer'; sum.textContent = 'All layers (fine control)';
+  det.appendChild(sum); lwrap.appendChild(det); target = det;
   addLayer('Wall fill (solid, from wall hatching)', st.wallfillCount || 0, !!st.catOn.wallfill, v => { st.catOn.wallfill = v ? 1 : 0; });
   for (const cat of sc.categories) addLayer(cat.label, sc.counts[cat.id] || 0, !!st.catOn[cat.id], v => { st.catOn[cat.id] = v ? 1 : 0; });
   addLayer('Live text / notes', sc.texts.length, st.notesOn, v => { st.notesOn = v; });
