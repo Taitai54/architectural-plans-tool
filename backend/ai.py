@@ -39,14 +39,35 @@ class AIError(Exception):
 def load_env_file(path: Path) -> None:
     if not path.exists():
         return
-    for raw in path.read_text().splitlines():
+    raw_bytes = path.read_bytes()
+    if raw_bytes.startswith((b"\xff\xfe", b"\xfe\xff")):        # PowerShell's `echo X > .env` writes UTF-16
+        text = raw_bytes.decode("utf-16", errors="replace")
+    else:
+        text = raw_bytes.decode("utf-8-sig", errors="replace")   # also strips the BOM Notepad adds
+    for raw in text.replace("\x00", "").splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
-        k, v = k.strip(), v.strip().strip('"').strip("'")
+        v = v.strip()
+        if v[:1] in ("'", '"') and v.find(v[0], 1) > 0:
+            v = v[1:v.find(v[0], 1)]
+        else:
+            v = re.split(r"\s+#", v, maxsplit=1)[0].strip()                 # a trailing "  # comment" is not part of the value
+        k = k.strip()
         if k and k not in os.environ:
             os.environ[k] = v
+
+
+def public_url(url: str) -> str:
+    """A URL with any user:password@ and query string removed, safe to show in the browser."""
+    from urllib.parse import urlsplit
+    try:
+        p = urlsplit(url)
+        host = p.hostname or ""
+        return f"{p.scheme}://{host}" + (f":{p.port}" if p.port else "") + p.path
+    except ValueError:
+        return "(invalid address)"
 
 
 def scrub(text: str) -> str:
@@ -263,8 +284,11 @@ class LocalProvider(OpenAIProvider):
         """Ask the local server which models it has. Empty when it isn't running."""
         import urllib.request
         try:
-            req = urllib.request.Request(cls.base_url_value().rstrip("/") + "/models")
-            with urllib.request.urlopen(req, timeout=2) as r:       # noqa: S310 - address is operator-set, not user input
+            url = cls.base_url_value().rstrip("/") + "/models"
+            if not url.lower().startswith(("http://", "https://")):
+                return []                                           # no file:// or other schemes
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))      # a local server is never behind a proxy
+            with opener.open(urllib.request.Request(url), timeout=2) as r:
                 data = json.loads(r.read().decode())
             return sorted({str(m.get("id")) for m in data.get("data", []) if m.get("id")})
         except Exception:
@@ -376,7 +400,7 @@ def list_models(pid: str) -> dict:
     if cls is LocalProvider:
         found = cls.installed_models()
         return {"models": found or list(cls.suggested_models), "live": bool(found),
-                "note": "" if found else f"Couldn't reach a local model server at {cls.base_url_value()} (start Ollama or LM Studio)."}
+                "note": "" if found else f"Couldn't reach a local model server at {public_url(cls.base_url_value())} (start Ollama or LM Studio)."}
     return {"models": list(cls.suggested_models), "live": False, "note": ""}
 
 

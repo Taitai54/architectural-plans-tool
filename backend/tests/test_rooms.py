@@ -359,3 +359,21 @@ def test_drawing_with_its_own_scale_label_keeps_it():
     # no paper-size confirmation: nothing is applied
     items[1]["text"] = "1:200"
     assert autodetect.assign_scales(scene, items)["ratios"] == {}
+
+
+def test_bare_ratios_near_a_drawing_are_not_taken_as_its_scale():
+    import autodetect
+    scene = {"width": 2384, "height": 1684,
+             "views": [{"id": "v1", "kind": "drawing", "bbox": [700, 200, 1260, 1280], "mm_per_pt": None},
+                       {"id": "v3", "kind": "titleblock", "bbox": [2016, 1353, 2347, 1649], "mm_per_pt": None}]}
+    items = [{"text": "1:20 gradient", "conf": 0.9, "bbox": [1000, 1285, 1100, 1300]},
+             {"text": "Detail 1:5", "conf": 0.9, "bbox": [1000, 1290, 1100, 1305]},
+             {"text": "1:50 @ A1", "conf": 0.8, "bbox": [2057, 1576, 2132, 1592]}]
+    assert autodetect.assign_scales(scene, items)["ratios"] == {"v1": 50}
+
+
+def test_parse_scale_prefers_the_paper_size_that_matches_the_page():
+    import ocr
+    items = [{"text": "1:100 @ A3", "conf": 0.95, "bbox": [0, 0, 1, 1]}, {"text": "1:50 @ A1", "conf": 0.9, "bbox": [0, 0, 1, 1]}]
+    r = ocr.parse_scale(items, 2384, 1684)
+    assert r["ratio"] == 50 and r["page_matches_paper"] is True

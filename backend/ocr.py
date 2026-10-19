@@ -130,7 +130,13 @@ def parse_scale(items: list[dict], page_w_pt: float | None = None, page_h_pt: fl
         cands.append({"ratio": ratio, "paper": (m.group(2) or "").upper() or None, "text": it["text"].strip(), "conf": it.get("conf", 1.0)})
     if not cands:
         return None
-    cands.sort(key=lambda c: (c["paper"] is None, -c["conf"]))    # "1:50 @ A1" beats a bare ratio
+    def fits(c):                                                  # does the named paper size match this page?
+        if not (c["paper"] and page_w_pt and page_h_pt):
+            return False
+        lo, hi = sorted((page_w_pt * 25.4 / 72, page_h_pt * 25.4 / 72))
+        pw, ph = PAPERS[c["paper"]]
+        return abs(lo - pw) < 6 and abs(hi - ph) < 6
+    cands.sort(key=lambda c: (not fits(c), c["paper"] is None, -c["conf"]))    # "1:50 @ A1" on an A1 page first, then any paper-tagged, then bare ratios
     best = cands[0]
     match = None
     if best["paper"] and page_w_pt and page_h_pt:

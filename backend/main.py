@@ -1,14 +1,20 @@
+import contextlib
 import json
 import re
 import shutil
+import threading
+import time
+import traceback
 import uuid
 from pathlib import Path
 from typing import Literal
 
 import pymupdf
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
 import ai
@@ -22,6 +28,9 @@ from planner import World
 # and run.sh binds to 127.0.0.1.
 ai.load_env_file(Path(__file__).parent / ".env")   # API keys stay on the server
 app = FastAPI()
+# Only answer requests addressed to this machine (blocks DNS-rebinding from a web page), and refuse writes whose Origin is another site.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]", "::1", "testserver"])
+MAX_STATE_BYTES = 5_000_000
 
 OUTPUT_DIR = Path(__file__).parent / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -32,16 +41,28 @@ VIEW_ID_RE = re.compile(r"^v[0-9]{1,3}$")
 PT_TO_MM = 25.4 / 72.0
 
 
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request, exc):
+    """Report what was wrong without echoing the input back (it may contain NaN, which JSON cannot carry)."""
+    return JSONResponse({"detail": [{"loc": list(e["loc"]), "msg": e["msg"]} for e in exc.errors()]}, status_code=422)
+
+
 @app.exception_handler(Exception)
 async def unexpected_error(request, exc):
     """Show the real error in the page (JSON) and keep the traceback in the terminal."""
     import traceback
     traceback.print_exception(exc)
-    return JSONResponse({"detail": f"Server error ({type(exc).__name__}): {str(exc)[:300]}"}, status_code=500)
+    return JSONResponse({"detail": f"Server error ({type(exc).__name__}): {ai.scrub(str(exc))[:300]}"}, status_code=500)
 
 
 @app.middleware("http")
-async def security_headers(request, call_next):
+async def security_headers(request: Request, call_next):
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("origin")
+        if origin and origin.split("://", 1)[-1].split("/", 1)[0] != request.headers.get("host", ""):
+            return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
+        if request.url.path.endswith("/state") and int(request.headers.get("content-length") or 0) > MAX_STATE_BYTES:
+            return JSONResponse({"detail": "Project data is too large"}, status_code=413)
     resp = await call_next(request)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "no-referrer"
@@ -58,13 +79,36 @@ def job_dir(job_id: str) -> Path:
 
 
 def read_json(path: Path):
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+_JOB_LOCKS: dict[str, threading.RLock] = {}
+_JOB_LOCKS_GUARD = threading.Lock()
+
+
+@contextlib.contextmanager
+def job_lock(d: Path):
+    """Serialises read-modify-write of a job's files (two quick requests must not overwrite each other's change)."""
+    with _JOB_LOCKS_GUARD:
+        lock = _JOB_LOCKS.setdefault(str(d), threading.RLock())
+    with lock:
+        yield
 
 
 def write_json(path: Path, data) -> None:
     tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
-    tmp.write_text(json.dumps(data, separators=(",", ":")))
-    tmp.replace(path)
+    tmp.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    try:
+        for attempt in range(8):
+            try:
+                tmp.replace(path)
+                return
+            except PermissionError:            # Windows: the target is briefly open elsewhere (reader, antivirus, indexer)
+                if attempt == 7:
+                    raise
+                time.sleep(0.03 * (attempt + 1))
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 # ── Upload and extract ────────────────────────────────────────────────────────
@@ -172,21 +216,22 @@ def update_view(job_id: str, page: int, view_id: str, body: ViewUpdate):
     d = job_dir(job_id)
     if not VIEW_ID_RE.match(view_id):
         raise HTTPException(404, "View not found")
-    meta = read_json(d / "meta.json")
-    pm = next((m for m in meta["pages"] if m["page"] == page), None)
-    if pm is None or view_id not in pm["views"]:
-        raise HTTPException(404, "View not found")
-    v = pm["views"][view_id]
-    if body.name is not None:
-        v["name"] = body.name.strip() or v["name"]
-    if body.ratio is not None:
-        v["ratio"] = body.ratio
-        v["mm_per_pt"] = PT_TO_MM * body.ratio
-    elif body.mm_per_pt is not None:
-        v["ratio"] = None
-        v["mm_per_pt"] = body.mm_per_pt
-    write_json(d / "meta.json", meta)
-    return v
+    with job_lock(d):
+        meta = read_json(d / "meta.json")
+        pm = next((m for m in meta["pages"] if m["page"] == page), None)
+        if pm is None or view_id not in pm["views"]:
+            raise HTTPException(404, "View not found")
+        v = pm["views"][view_id]
+        if body.name is not None:
+            v["name"] = body.name.strip() or v["name"]
+        if body.ratio is not None:
+            v["ratio"] = body.ratio
+            v["mm_per_pt"] = PT_TO_MM * body.ratio
+        elif body.mm_per_pt is not None:
+            v["ratio"] = None
+            v["mm_per_pt"] = body.mm_per_pt
+        write_json(d / "meta.json", meta)
+        return v
 
 
 # ── Project state: rooms, furniture, measurements (user data, separate from extraction) ──
@@ -233,7 +278,7 @@ class CatalogueItem(BaseModel):
 
 class Comment(BaseModel):
     text: str = Field(max_length=4000)
-    ts: float = 0
+    ts: float = Field(default=0, ge=0, le=1e15, allow_inf_nan=False)
 
 
 class Pin(BaseModel):
@@ -243,7 +288,7 @@ class Pin(BaseModel):
     text: str = Field(max_length=4000)
     status: Literal["open", "resolved"] = "open"
     source: Literal["pdf", "user", "ai"] = "user"
-    created: float = 0
+    created: float = Field(default=0, ge=0, le=1e15, allow_inf_nan=False)
     thread: list[Comment] = Field(default_factory=list, max_length=200)
 
 
@@ -279,7 +324,8 @@ def _page_meta(d: Path, page: int) -> dict:
 def put_state(job_id: str, page: int, body: PageState):
     d = job_dir(job_id)
     _page_meta(d, page)
-    write_json(_state_path(d, page), body.model_dump())
+    with job_lock(d):
+        write_json(_state_path(d, page), body.model_dump())
     return {"ok": True}
 
 
@@ -348,7 +394,7 @@ def ai_assist(job_id: str, page: int, body: AIRequest):
         raise HTTPException(400, ai.scrub(str(e)))
     except Exception as e:           # provider/network failures: report, without leaking keys
         hint = " Is your local model server running (Ollama / LM Studio), and does the model support tools?" if body.provider == "local" else ""
-        raise HTTPException(502, ai.scrub(f"The AI provider request failed ({type(e).__name__}): {str(e)[:300]}.{hint}"))
+        raise HTTPException(502, f"The AI provider request failed ({type(e).__name__}): {ai.scrub(str(e))[:300]}.{hint}")
     ops, dropped = validate_ops(result["ops"])
     message = result["message"] + (f" ({dropped} invalid proposal(s) were dropped.)" if dropped else "")
     return {**result, "ops": ops, "message": message, "provider": body.provider, "model": provider.model}
@@ -356,13 +402,14 @@ def ai_assist(job_id: str, page: int, body: AIRequest):
 
 def _apply_page_scale(d: Path, page: int, scene: dict, ratios: dict[str, float]) -> None:
     """Store {view_id: ratio} on drawings that have no scale yet (the title block never gets one)."""
-    meta = read_json(d / "meta.json")
-    pm = next(m for m in meta["pages"] if m["page"] == page)
-    kinds = {v["id"]: v["kind"] for v in scene["views"]}
-    for vid, v in pm["views"].items():
-        if vid in ratios and not v.get("mm_per_pt") and kinds.get(vid) == "drawing":
-            v["ratio"], v["mm_per_pt"] = ratios[vid], PT_TO_MM * ratios[vid]
-    write_json(d / "meta.json", meta)
+    with job_lock(d):
+        meta = read_json(d / "meta.json")
+        pm = next(m for m in meta["pages"] if m["page"] == page)
+        kinds = {v["id"]: v["kind"] for v in scene["views"]}
+        for vid, v in pm["views"].items():
+            if vid in ratios and not v.get("mm_per_pt") and kinds.get(vid) == "drawing":
+                v["ratio"], v["mm_per_pt"] = ratios[vid], PT_TO_MM * ratios[vid]
+        write_json(d / "meta.json", meta)
 
 
 @app.post("/api/jobs/{job_id}/pages/{page}/read-scale")
@@ -386,7 +433,7 @@ def read_scale(job_id: str, page: int):
 
 @app.post("/api/jobs/{job_id}/pages/{page}/detect-rooms")
 def detect_rooms(job_id: str, page: int):
-    """Propose rooms (with names and the sheet scale read from the drawing). Nothing is saved until the user accepts."""
+    """Propose rooms (with names). Rooms are saved only when the user accepts them; a scale read from the drawing is stored on the drawings straight away."""
     d = job_dir(job_id)
     scene = _load_scene(d, page)
     if scene["kind"] == "scan":
@@ -397,10 +444,8 @@ def detect_rooms(job_id: str, page: int):
 
     try:
         result = autodetect.run(d, page, scene, apply_scale)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(503, f"Reading the drawing text failed ({type(e).__name__}); try again.")
+    except autodetect.TextReadError as e:
+        raise HTTPException(503, str(e))
     if result.get("error") == "scale":
         return JSONResponse({"detail": "Set the scale for the plan first (section 4), then detect rooms.",
                              "scale_suggestion": result["scale_suggestion"]}, status_code=409)

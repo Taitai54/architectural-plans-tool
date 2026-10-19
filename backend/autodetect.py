@@ -1,12 +1,17 @@
 """Orchestration for automatic room detection: read the text once (cached), find the scale, detect rooms."""
 import json
-import os
+import uuid
 import math
+import re
 from pathlib import Path
 from typing import Any
 
 import ocr
 import rooms
+
+
+class TextReadError(Exception):
+    """Reading the drawing text (live text or OCR) failed."""
 
 PT_TO_MM = 25.4 / 72.0
 PAD = 90.0
@@ -19,7 +24,7 @@ def text_items(job_dir: Path, page: int, scene: dict) -> tuple[list[dict], dict[
     items: list[dict] = []
     if cache.exists():
         try:
-            loaded = json.loads(cache.read_text())
+            loaded = json.loads(cache.read_text(encoding="utf-8"))
             items = loaded if isinstance(loaded, list) else []
         except ValueError:
             items = []
@@ -30,8 +35,8 @@ def text_items(job_dir: Path, page: int, scene: dict) -> tuple[list[dict], dict[
                    for v in scene["views"]] or [(0.0, 0.0, w, h)]
         items = ocr.ocr_page(str(job_dir / "original.pdf"), page, regions)
         if items:                                   # an empty result is not worth remembering
-            tmp = cache.with_name(f"{cache.name}.{os.getpid()}.tmp")
-            tmp.write_text(json.dumps(items))
+            tmp = cache.with_name(f"{cache.name}.{uuid.uuid4().hex}.tmp")
+            tmp.write_text(json.dumps(items), encoding="utf-8")
             tmp.replace(cache)
         info["ran"] = True
     live = [{"text": t["text"], "conf": 1.0, "bbox": t["bbox"]} for t in scene.get("texts", [])]
@@ -47,6 +52,15 @@ def _gap(b: list[float], v: list[float]) -> float:
     dx = max(v[0] - b[2], 0.0, b[0] - v[2])
     dy = max(v[1] - b[3], 0.0, b[1] - v[3])
     return math.hypot(dx, dy)
+
+
+_LABEL = re.compile(r"^\s*(scale|sc\.?)\s*[:=]?\s*1\s*[:/]", re.I)
+
+
+def _is_scale_label(c: dict) -> bool:
+    """A printed scale that belongs to a drawing: it says "Scale", or names a paper size ("1:50 @ A1"). A bare "1:20
+    gradient" or "Detail 1:5" is not a scale."""
+    return bool(c.get("paper")) or bool(_LABEL.match(c.get("text", "")))
 
 
 def assign_scales(scene: dict, items: list[dict]) -> dict[str, Any]:
@@ -68,7 +82,7 @@ def assign_scales(scene: dict, items: list[dict]) -> dict[str, Any]:
         if v.get("mm_per_pt"):
             continue
         near = [(c, _gap(c["bbox"], v["bbox"])) for c in cands
-                if not any(_gap(c["bbox"], t["bbox"]) < 1 for t in title)]
+                if _is_scale_label(c) and not any(_gap(c["bbox"], t["bbox"]) < 1 for t in title)]
         near = [x for x in near if x[1] <= NEAR_PT]
         if near:
             c = min(near, key=lambda x: x[1])[0]
@@ -96,7 +110,10 @@ def view_scale_fn(scene: dict):
 
 def run(job_dir: Path, page: int, scene: dict, apply_scale) -> dict[str, Any]:
     """Detect rooms on a page. `apply_scale({view_id: ratio})` stores the ratios read from the drawing."""
-    items, info = text_items(job_dir, page, scene)
+    try:
+        items, info = text_items(job_dir, page, scene)
+    except Exception as e:
+        raise TextReadError(f"Reading the drawing text failed ({type(e).__name__}); try again.") from e
     plan = assign_scales(scene, items)
     suggestion = plan["found"]
     scale_applied = None
