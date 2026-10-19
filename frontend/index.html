@@ -542,36 +542,89 @@ function computeTidy() {
     return !structBoxes.some(s => x0 - P.hatchNear <= s[2] && s[0] - P.hatchNear <= x1 && y0 - P.hatchNear <= s[3] && s[1] - P.hatchNear <= y1);
   });
 }
-// Glazing runs: long thin lines (medium weight) that join two pieces of solid wall, e.g. a glazed screen between wall piers.
+// Glazed doors / screens: a bundle of long parallel straight lines (any weight, including hairlines) running between two pieces of
+// solid wall. The whole bundle, with its partial lines (leaves, frames), is redrawn in blue so Clean can keep it.
 function buildGlass() {
   const g = $('cat-glass'); if (!g) return;
   g.textContent = ''; st.glassCount = 0;
-  if (!st.tidyItems || !st.detailItems) return;
+  const sc = st.scene; if (!sc || !st.tidyItems) return;
   if (!st.tidyHide) computeTidy();
   const hidden = new Set(st.tidyHide), solid = st.tidyItems.filter(it => it.box && !hidden.has(it) && it.cat !== 'fills');
-  const grid = new Map(), C = 20;
+  const C = 20, grid = new Map();
   for (const it of solid) {
     const b = it.box;
     for (let cx = Math.floor(b[0] / C); cx <= Math.floor(b[2] / C); cx++) for (let cy = Math.floor(b[1] / C); cy <= Math.floor(b[3] / C); cy++) {
       const k = cx + ',' + cy; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(b);
     }
   }
-  const R = 40, near = (x, y) => {
+  const nearR = (x, y, R) => {
     for (let cx = Math.floor((x - R) / C); cx <= Math.floor((x + R) / C); cx++) for (let cy = Math.floor((y - R) / C); cy <= Math.floor((y + R) / C); cy++)
       for (const b of grid.get(cx + ',' + cy) || []) if (x >= b[0] - R && x <= b[2] + R && y >= b[1] - R && y <= b[3] + R) return true;
     return false;
-  };
-  for (const it of st.detailItems) {
-    const pts = pathPts(it.d); if (pts.length < 2) continue;
+  }, near = (x, y) => nearR(x, y, 45);
+  // 1. straight axis-aligned lines from the thin and medium categories
+  const lines = [];
+  sc.paths.forEach((p, i) => {
+    if (p.cat !== 'fine' && p.cat !== 'detail' && p.cat !== 'structure') return;
+    const pts = pathPts(p.d); if (pts.length < 2 || pts.length > 8) return;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of pts) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    const w = x1 - x0, h = y1 - y0, len = Math.max(w, h), thin = Math.min(w, h);
-    const view = viewAt((x0 + x1) / 2, (y0 + y1) / 2), mm = view && view.mm_per_pt;
-    if (thin > 8 || thin < 1.5 || len < (mm ? 1500 / mm : 100)) continue;      // a double line / thin frame, not a single edge
-    const a = w >= h ? [[x0, (y0 + y1) / 2], [x1, (y0 + y1) / 2]] : [[(x0 + x1) / 2, y0], [(x0 + x1) / 2, y1]];
-    if (!(near(a[0][0], a[0][1]) && near(a[1][0], a[1][1]))) continue;      // both ends must meet solid wall
-    g.appendChild(el('path', { d: it.d, fill: 'none', stroke: '#1d6fd6', 'stroke-width': 2.2, 'stroke-linecap': 'round' }));
-    st.glassCount++;
+    const w = x1 - x0, h = y1 - y0, vw = viewAt((x0 + x1) / 2, (y0 + y1) / 2);
+    if (!vw || vw.kind !== 'drawing') return;                                  // not the title block
+    if (w < 0.6 && h > 3) lines.push({ i, o: 'v', pos: (x0 + x1) / 2, a: y0, b: y1, box: [x0, y0, x1, y1] });
+    else if (h < 0.6 && w > 3) lines.push({ i, o: 'h', pos: (y0 + y1) / 2, a: x0, b: x1, box: [x0, y0, x1, y1] });
+  });
+  const view = viewAt((sc.views[0] || { bbox: [0, 0, 1, 1] }).bbox[0], (sc.views[0] || { bbox: [0, 0, 1, 1] }).bbox[1]);
+  const minLen = (view && view.mm_per_pt) ? 1800 / view.mm_per_pt : 110;
+  for (const o of ['v', 'h']) {
+    // 2. merge collinear pieces of the same line
+    const byPos = new Map();
+    for (const l of lines.filter(l => l.o === o)) { const k = Math.round(l.pos * 2); if (!byPos.has(k)) byPos.set(k, []); byPos.get(k).push(l); }
+    const merged = [];
+    for (const [k, ls] of byPos) {
+      ls.sort((p, q) => p.a - q.a);
+      let a = ls[0].a, b = ls[0].b, cover = ls[0].b - ls[0].a;
+      const flush = () => { if (b - a >= minLen && cover / (b - a) >= 0.92) merged.push({ o, pos: k / 2, a, b }); };
+      for (let j = 1; j < ls.length; j++) {
+        if (ls[j].a <= b + 4) { cover += Math.max(0, ls[j].b - Math.max(ls[j].a, b)); b = Math.max(b, ls[j].b); }
+        else { flush(); a = ls[j].a; b = ls[j].b; cover = b - a; }
+      }
+      flush();
+    }
+    // 3. bundles of at least four full-length parallel lines that start and end together
+    merged.sort((p, q) => p.pos - q.pos);
+    let cl = [];
+    const closeCluster = () => {
+      let full = [];
+      for (const ref of cl) {                                                 // the largest set of lines that start and end together
+        const set = cl.filter(m => Math.abs(m.a - ref.a) <= 10 && Math.abs(m.b - ref.b) <= 10);
+        if (set.length > full.length) full = set;
+      }
+      cl = [];
+      if (full.length < 4) return;
+      const a0 = Math.min(...full.map(m => m.a)), b0 = Math.max(...full.map(m => m.b));
+      const p0 = Math.min(...full.map(m => m.pos)), p1 = Math.max(...full.map(m => m.pos));
+      const mid = (p0 + p1) / 2;
+      const e0 = o === 'v' ? [mid, a0] : [a0, mid], e1 = o === 'v' ? [mid, b0] : [b0, mid];
+      if (!(near(e0[0], e0[1]) && near(e1[0], e1[1]))) return;                 // both ends must meet solid wall
+      for (const side of [p0 - 12, p1 + 12]) {                                 // ...but not run alongside a wall (worktops, joinery)
+        let hits = 0;
+        for (let k = 1; k <= 9; k++) { const t = a0 + (b0 - a0) * k / 10; if (o === 'v' ? nearR(side, t, 4) : nearR(t, side, 4)) hits++; }
+        if (hits >= 5) return;
+      }
+      const box = o === 'v' ? [p0 - 1, a0 - 1, p1 + 1, b0 + 1] : [a0 - 1, p0 - 1, b0 + 1, p1 + 1];
+      for (const l of lines) {                                                 // every line inside the bundle belongs to the glazing
+        if (l.box[0] >= box[0] && l.box[2] <= box[2] && l.box[1] >= box[1] && l.box[3] <= box[3]) {
+          g.appendChild(el('path', { d: sc.paths[l.i].d, fill: 'none', stroke: '#1d6fd6', 'stroke-width': 1.3, 'stroke-linecap': 'round' }));
+        }
+      }
+      st.glassCount++;
+    };
+    for (const m of merged) {
+      if (cl.length && m.pos - cl[cl.length - 1].pos > 50) closeCluster();
+      cl.push(m);
+    }
+    if (cl.length) closeCluster();
   }
 }
 // Leader lines and dashed diagonals: short, off-axis strokes with at most one bend. Walls and joinery are almost always axis-aligned.
@@ -652,7 +705,7 @@ function renderSidebar() {
   const wallsCb = addLayer('Walls (heavy lines + wall fill)', (sc.counts.structure || 0) + (st.wallfillCount || 0), wallsOn, v => { st.catOn.structure = v ? 1 : 0; st.catOn.wallfill = v ? 1 : 0; });
   wallsCb.onchange = () => { st.catOn.structure = wallsCb.checked ? 1 : 0; st.catOn.wallfill = wallsCb.checked ? 1 : 0; applyVisibility(); renderSidebar(); };
   wallsRef = wallsCb;
-  addLayer('Glazing runs (blue)', st.glassCount || 0, !!st.catOn.glass, v => { st.catOn.glass = v ? 1 : 0; });
+  addLayer('Glazed doors / screens (blue)', st.glassCount || 0, !!st.catOn.glass, v => { st.catOn.glass = v ? 1 : 0; });
   addLayer('Hide loose marks and boundary lines', null, !!st.tidyOn, v => { st.tidyOn = v; });
   const det = document.createElement('details'); det.style.marginTop = '6px'; det.open = !!st.layersOpen; det.ontoggle = () => { st.layersOpen = det.open; };
   const sum = document.createElement('summary'); sum.className = 'hint'; sum.style.cursor = 'pointer'; sum.textContent = 'All layers (fine control)';
@@ -677,7 +730,7 @@ const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'applicatio
 $('preset-clean').onclick = () => { st.tidyOn = true; st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
 $('preset-walls').onclick = () => { st.tidyOn = true; st.catOn = { wallfill: 1, glass: 1, structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
 $('preset-structure').onclick = () => { st.catOn = { wallfill: 1, glass: 1, structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; st.tidyOn = true; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
-$('preset-all').onclick = () => { st.tidyOn = false; for (const c of CAT_ORDER) st.catOn[c] = 1; for (const v of st.scene.views) st.viewOn[v.id] = true; applyVisibility(); renderSidebar(); };
+$('preset-all').onclick = () => { st.tidyOn = false; for (const c of CAT_ORDER) st.catOn[c] = 1; st.catOn.glass = 0; for (const v of st.scene.views) st.viewOn[v.id] = true; applyVisibility(); renderSidebar(); };
 
 async function saveScale(body, viewId) {
   const av = viewData(viewId || st.activeView);
