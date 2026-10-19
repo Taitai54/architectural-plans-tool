@@ -412,6 +412,9 @@ async function loadPage(n) {
   if (st.scene.kind === 'scan') {
     b.textContent = 'This page is a scan (no vector data). Showing a raster preview; you can still calibrate and measure. Automatic extraction for scans is planned.';
     b.classList.add('visible');
+  } else if (st.scene.kind !== 'scan' && (st.scene.extract_version || 0) < 2) {
+    b.textContent = 'This plan was read by an older version, so the Clean, Walls only and Structure views look rough. Close and restart run.bat if you have just updated, then upload the PDF again.';
+    b.classList.add('visible');
   } else b.classList.remove('visible');
 }
 
