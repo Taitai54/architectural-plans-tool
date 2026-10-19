@@ -249,8 +249,8 @@
 <script>
 const SVGNS = 'http://www.w3.org/2000/svg';
 const PT_TO_MM = 25.4 / 72;
-const CAT_ORDER = ['wallfill', 'fills', 'fine', 'hatch', 'dashed', 'detail', 'structure', 'text'];
-const CLEAN = { wallfill: 1, structure: 1, detail: 1, fills: 1, dashed: 1, hatch: 0, fine: 0, text: 0 };
+const CAT_ORDER = ['wallfill', 'glass', 'fills', 'fine', 'hatch', 'dashed', 'detail', 'structure', 'text'];
+const CLEAN = { wallfill: 1, glass: 1, structure: 1, detail: 1, fills: 1, dashed: 1, hatch: 0, fine: 0, text: 0 };
 
 const $ = id => document.getElementById(id);
 // Standard sizes come from the backend (backend/catalogue.py) so the viewer and the AI agree.
@@ -390,7 +390,7 @@ async function loadPage(n) {
   st.selected = null; st.pending = []; st.calib = null; st.roomPts = []; setMode(null);
   chat.log = []; renderChat(); $('chat').classList.add('visible');
   st.candidates = []; renderCandidates();
-  st.catOn = { ...CLEAN, text: 0 };
+  st.catOn = { ...CLEAN, text: 0 }; st.tidyOn = true;
   st.viewOn = {};
   for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock';
   st.activeView = (st.scene.views.find(v => v.kind === 'drawing') || st.scene.views[0] || {}).id || null;
@@ -430,7 +430,7 @@ function renderScene() {
     const g = el('g', { id: 'cat-' + c });
     groups[c] = g; world.appendChild(g);
   }
-  st.wallfillCount = 0; st.tidyItems = [];
+  st.wallfillCount = 0; st.tidyItems = []; st.detailItems = [];
   for (const p of sc.paths) {
     const e = el('path', { d: p.d });
     e.setAttribute('class', `c-${p.cat}` + (p.v ? ` v-${p.v}` : ''));
@@ -444,6 +444,7 @@ function renderScene() {
       groups.wallfill.appendChild(fat);
       st.wallfillCount++;
     }
+    if (p.cat === 'detail') st.detailItems.push({ d: p.d, v: p.v, els: [e] });
     if (p.cat === 'structure' || p.cat === 'hatch' || p.cat === 'fills') st.tidyItems.push({ cat: p.cat, d: p.d, els: fat ? [e, fat] : [e] });
   }
   const notes = el('g', { id: 'notes' });
@@ -451,7 +452,8 @@ function renderScene() {
     notes.appendChild(el('text', { x: t.x, y: t.y, 'font-size': t.size, class: 'note' }, t.text));
   }
   world.appendChild(notes);
-  st.tidyHide = null;
+  st.tidyHide = null; st.glassDone = false;
+  buildGlass();
   applyVisibility();
   renderOverlay();
 }
@@ -526,7 +528,53 @@ function computeTidy() {
   }
   st.tidyHide = items.filter((_, i) => !keep.has(i));
 }
+// Glazing runs: long thin lines (medium weight) that join two pieces of solid wall, e.g. a glazed screen between wall piers.
+function buildGlass() {
+  const g = $('cat-glass'); if (!g) return;
+  g.textContent = ''; st.glassCount = 0;
+  if (!st.tidyItems || !st.detailItems) return;
+  if (!st.tidyHide) computeTidy();
+  const hidden = new Set(st.tidyHide), solid = st.tidyItems.filter(it => it.box && !hidden.has(it) && it.cat !== 'fills');
+  const grid = new Map(), C = 20;
+  for (const it of solid) {
+    const b = it.box;
+    for (let cx = Math.floor(b[0] / C); cx <= Math.floor(b[2] / C); cx++) for (let cy = Math.floor(b[1] / C); cy <= Math.floor(b[3] / C); cy++) {
+      const k = cx + ',' + cy; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(b);
+    }
+  }
+  const R = 40, near = (x, y) => {
+    for (let cx = Math.floor((x - R) / C); cx <= Math.floor((x + R) / C); cx++) for (let cy = Math.floor((y - R) / C); cy <= Math.floor((y + R) / C); cy++)
+      for (const b of grid.get(cx + ',' + cy) || []) if (x >= b[0] - R && x <= b[2] + R && y >= b[1] - R && y <= b[3] + R) return true;
+    return false;
+  };
+  for (const it of st.detailItems) {
+    const pts = pathPts(it.d); if (pts.length < 2) continue;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of pts) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    const w = x1 - x0, h = y1 - y0, len = Math.max(w, h), thin = Math.min(w, h);
+    const view = viewAt((x0 + x1) / 2, (y0 + y1) / 2), mm = view && view.mm_per_pt;
+    if (thin > 8 || thin < 1.5 || len < (mm ? 1500 / mm : 100)) continue;      // a double line / thin frame, not a single edge
+    const a = w >= h ? [[x0, (y0 + y1) / 2], [x1, (y0 + y1) / 2]] : [[(x0 + x1) / 2, y0], [(x0 + x1) / 2, y1]];
+    if (!(near(a[0][0], a[0][1]) && near(a[1][0], a[1][1]))) continue;      // both ends must meet solid wall
+    g.appendChild(el('path', { d: it.d, fill: 'none', stroke: '#1d6fd6', 'stroke-width': 2.2, 'stroke-linecap': 'round' }));
+    st.glassCount++;
+  }
+}
+// Leader lines and dashed diagonals: short, off-axis strokes with at most one bend. Walls and joinery are almost always axis-aligned.
+function leaderLike(it) {
+  if (it.leader !== undefined) return it.leader;
+  const pts = pathPts(it.d); it.leader = false;
+  if (pts.length < 2 || pts.length > 3) return false;
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i][0] - pts[i - 1][0], dy = pts[i][1] - pts[i - 1][1], len = Math.hypot(dx, dy);
+    if (len < 20) continue;
+    const ang = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI) % 90, off = Math.min(ang, 90 - ang);
+    if (off >= 10) { it.leader = true; break; }
+  }
+  return it.leader;
+}
 function applyTidy() {
+  for (const it of st.detailItems || []) it.els[0].style.display = st.tidyOn && leaderLike(it) ? 'none' : '';
   if (st.tidyOn && !st.tidyHide) computeTidy();
   for (const it of st.tidyItems || []) for (const e of it.els) e.style.display = '';
   if (st.tidyOn) for (const it of st.tidyHide || []) for (const e of it.els) e.style.display = 'none';
@@ -588,6 +636,7 @@ function renderSidebar() {
   const wallsCb = addLayer('Walls (heavy lines + wall fill)', (sc.counts.structure || 0) + (st.wallfillCount || 0), wallsOn, v => { st.catOn.structure = v ? 1 : 0; st.catOn.wallfill = v ? 1 : 0; });
   wallsCb.onchange = () => { st.catOn.structure = wallsCb.checked ? 1 : 0; st.catOn.wallfill = wallsCb.checked ? 1 : 0; applyVisibility(); renderSidebar(); };
   wallsRef = wallsCb;
+  addLayer('Glazing runs (blue)', st.glassCount || 0, !!st.catOn.glass, v => { st.catOn.glass = v ? 1 : 0; });
   addLayer('Hide loose marks and boundary lines', null, !!st.tidyOn, v => { st.tidyOn = v; });
   const det = document.createElement('details'); det.style.marginTop = '6px'; det.open = !!st.layersOpen; det.ontoggle = () => { st.layersOpen = det.open; };
   const sum = document.createElement('summary'); sum.className = 'hint'; sum.style.cursor = 'pointer'; sum.textContent = 'All layers (fine control)';
@@ -609,9 +658,9 @@ function renderSidebar() {
 const ROOM_HINT = 'Draw a room by clicking its corners (they snap to the walls). Click the first corner again, press Enter or double-click to close it. Needs a scale.';
 const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-$('preset-clean').onclick = () => { st.tidyOn = false; st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
-$('preset-walls').onclick = () => { st.tidyOn = false; st.catOn = { wallfill: 1, structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
-$('preset-structure').onclick = () => { st.catOn = { wallfill: 1, structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; st.tidyOn = true; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
+$('preset-clean').onclick = () => { st.tidyOn = true; st.catOn = { ...CLEAN }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
+$('preset-walls').onclick = () => { st.tidyOn = true; st.catOn = { wallfill: 1, glass: 1, structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
+$('preset-structure').onclick = () => { st.catOn = { wallfill: 1, glass: 1, structure: 1, detail: 0, fills: 1, dashed: 0, hatch: 0, fine: 0, text: 0 }; st.tidyOn = true; for (const v of st.scene.views) st.viewOn[v.id] = v.kind !== 'titleblock'; applyVisibility(); renderSidebar(); };
 $('preset-all').onclick = () => { st.tidyOn = false; for (const c of CAT_ORDER) st.catOn[c] = 1; for (const v of st.scene.views) st.viewOn[v.id] = true; applyVisibility(); renderSidebar(); };
 
 async function saveScale(body, viewId) {
