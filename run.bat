@@ -9,6 +9,10 @@ where py >nul 2>nul && (set PY=py) || (set PY=python)
   exit /b 1
 )
 
+echo Closing any copy of the tool that is still running on port 8000...
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; if ($p -and $p.ProcessName -match '^(python|pythonw|py)') { Stop-Process -Id $p.Id -Force } }"
+timeout /t 1 >nul
+
 echo Installing requirements (first run takes a minute)...
 %PY% -m pip install -q -r requirements.txt
 if errorlevel 1 (
