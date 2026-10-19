@@ -25,6 +25,7 @@ CATEGORIES = [
 ]
 
 HATCH_MAX_LEN = 25.0       # hatch strokes are short straight segments...
+MAX_DRAWINGS = 400_000      # beyond this a page is too heavy to process locally
 HATCH_NEIGHBOURS = 6       # ...with at least this many siblings nearby
 HATCH_RADIUS = 12.0
 WORD_MAX_DIM = 80.0        # larger filled shapes are never text
@@ -99,8 +100,9 @@ def _dash(dashes: str | None) -> list[float] | None:
     return nums if nums and any(n > 0 for n in nums) else None
 
 
-def _grid_neighbours(centres: list[tuple[float, float]], radius: float) -> list[int]:
-    """For each centre, how many *other* centres lie within `radius`."""
+def _grid_neighbours(centres: list[tuple[float, float]], radius: float, cap: int = 0) -> list[int]:
+    """For each centre, how many *other* centres lie within `radius` (counting stops at `cap` when given: dense
+    stipple would otherwise make this quadratic)."""
     cell = radius
     grid: dict[tuple[int, int], list[int]] = {}
     for i, (x, y) in enumerate(centres):
@@ -115,6 +117,12 @@ def _grid_neighbours(centres: list[tuple[float, float]], radius: float) -> list[
                 for j in grid.get((gx, gy), ()):
                     if j != i and (centres[j][0] - x) ** 2 + (centres[j][1] - y) ** 2 <= r2:
                         n += 1
+                        if cap and n >= cap:
+                            break
+                if cap and n >= cap:
+                    break
+            if cap and n >= cap:
+                break
         out.append(n)
     return out
 
@@ -160,7 +168,7 @@ def _classify_all(drawings: list[dict], hw: float = HEAVY_W, mw: float = MEDIUM_
                  if _is_filled(d) and max(d["rect"].width, d["rect"].height) < WORD_MAX_DIM]
     centres = [((drawings[i]["rect"].x0 + drawings[i]["rect"].x1) / 2,
                 (drawings[i]["rect"].y0 + drawings[i]["rect"].y1) / 2) for i in glyph_idx]
-    near = _grid_neighbours(centres, 45.0)
+    near = _grid_neighbours(centres, 45.0, cap=1)
     in_word = {i for i, n in zip(glyph_idx, near) if n >= 1}
     for i in glyph_idx:
         d = drawings[i]
@@ -179,7 +187,7 @@ def _classify_all(drawings: list[dict], hw: float = HEAVY_W, mw: float = MEDIUM_
             hatch_idx.append(i)
     hc = [((drawings[i]["rect"].x0 + drawings[i]["rect"].x1) / 2,
            (drawings[i]["rect"].y0 + drawings[i]["rect"].y1) / 2) for i in hatch_idx]
-    for i, n in zip(hatch_idx, _grid_neighbours(hc, HATCH_RADIUS)):
+    for i, n in zip(hatch_idx, _grid_neighbours(hc, HATCH_RADIUS, cap=HATCH_NEIGHBOURS)):
         if n >= HATCH_NEIGHBOURS:
             cats[i] = "hatch"
 
@@ -474,6 +482,8 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
     if page.rotation:
         page.set_rotation(0)
     drawings = page.get_drawings()
+    if len(drawings) > MAX_DRAWINGS:
+        raise ValueError(f"Page has {len(drawings):,} drawing paths; the limit is {MAX_DRAWINGS:,}")
 
     texts = []
     n_chars = 0

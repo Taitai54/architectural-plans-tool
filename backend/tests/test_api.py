@@ -223,3 +223,59 @@ def test_read_scale_only_suggests_when_the_paper_size_is_not_confirmed(client):
     r = client.post(f"/api/jobs/{job}/pages/1/read-scale").json()
     assert not r["applied"] and r["found"]["ratio"] == 50
     assert client.post(f"/api/jobs/{job}/pages/1/read-scale").status_code == 200
+
+
+# ── review fixes ──────────────────────────────────────────────────────────────
+def test_foreign_host_and_origin_are_refused(client):
+    assert client.get("/api/catalogue", headers={"host": "evil.example.com"}).status_code == 400
+    r = client.post("/api/upload", files={"file": ("a.pdf", io.BytesIO(plan_pdf()), "application/pdf")},
+                    headers={"origin": "https://evil.example.com"})
+    assert r.status_code == 403
+    assert upload(client, plan_pdf()).status_code == 200
+
+
+def test_nan_in_state_is_rejected_and_page_stays_readable(client):
+    job = upload(client, plan_pdf()).json()["job_id"]
+    bad = '{"pins":[{"id":"p1","x":1,"y":1,"text":"t","created":NaN}]}'
+    r = client.put(f"/api/jobs/{job}/pages/1/state", content=bad, headers={"content-type": "application/json"})
+    assert r.status_code == 422
+    assert client.get(f"/api/jobs/{job}/pages/1").status_code == 200
+
+
+def test_concurrent_view_updates_do_not_lose_each_other(client):
+    from concurrent.futures import ThreadPoolExecutor
+    job = upload(client, plan_pdf()).json()["job_id"]
+    vid = client.get(f"/api/jobs/{job}/pages/1").json()["views"][0]["id"]
+    with ThreadPoolExecutor(4) as ex:
+        list(ex.map(lambda i: client.put(f"/api/jobs/{job}/pages/1/views/{vid}", json={"name": "Ground floor" if i % 2 else "x"}), range(8)))
+        client.put(f"/api/jobs/{job}/pages/1/views/{vid}", json={"ratio": 50})
+    v = next(v for v in client.get(f"/api/jobs/{job}/pages/1").json()["views"] if v["id"] == vid)
+    assert v["ratio"] == 50
+
+
+def test_env_file_handles_bom_utf16_and_comments(tmp_path, monkeypatch):
+    import ai
+    for k in ("T_KEY_A", "T_KEY_B", "T_KEY_C"):
+        monkeypatch.delenv(k, raising=False)
+    (tmp_path / "a.env").write_bytes(b"\xef\xbb\xbfT_KEY_A=abc123  # my key\n")
+    (tmp_path / "b.env").write_bytes("T_KEY_B=xyz789\r\n".encode("utf-16"))
+    (tmp_path / "c.env").write_text('T_KEY_C="quoted # value"\n')
+    for n in "abc":
+        ai.load_env_file(tmp_path / f"{n}.env")
+    import os
+    assert os.environ["T_KEY_A"] == "abc123" and os.environ["T_KEY_B"] == "xyz789" and os.environ["T_KEY_C"] == "quoted # value"
+    monkeypatch.delenv("T_KEY_A"); monkeypatch.delenv("T_KEY_B"); monkeypatch.delenv("T_KEY_C")
+
+
+def test_public_url_hides_credentials():
+    import ai
+    assert ai.public_url("http://bob:hunter2@host:1234/v1?token=abc") == "http://host:1234/v1"
+
+
+def test_dense_stipple_does_not_make_extraction_quadratic():
+    import time
+    import extract
+    centres = [(float(i % 200) * 0.1, float(i // 200) * 0.1) for i in range(20000)]    # all in one cell
+    t = time.time()
+    near = extract._grid_neighbours(centres, 45.0, cap=6)
+    assert time.time() - t < 3 and min(near) >= 6
