@@ -25,6 +25,7 @@ CATEGORIES = [
 ]
 
 HATCH_MAX_LEN = 25.0       # hatch strokes are short straight segments...
+EXTRACT_VERSION = 2          # bumped when the scene format gains something the viewer relies on (2: wallbands)
 MAX_DRAWINGS = 400_000      # beyond this a page is too heavy to process locally
 HATCH_NEIGHBOURS = 6       # ...with at least this many siblings nearby
 HATCH_RADIUS = 12.0
@@ -591,6 +592,7 @@ def extract_page(page: pymupdf.Page) -> dict[str, Any]:
         "solids": solids,
         "wallbands": _wall_bands(hatch_lines),
         "mass": {"cell": MASS_CELL, "cells": [c for xy in sorted(mass) for c in xy]},
+        "extract_version": EXTRACT_VERSION,
         "counts": counts,
         "n_chars": n_chars,
     }
