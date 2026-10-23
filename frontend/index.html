@@ -76,6 +76,14 @@
   #world .c-fills, #world .c-text { stroke: none; }
   #world .note { fill: #1d4ed8; font-family: Arial, sans-serif; pointer-events: none; }
   #hud { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: #444; background: rgba(255,255,255,.9); padding: 4px 8px; border-radius: 5px; border: 1px solid #e0e0e8; display: none; }
+  #stage.marking { cursor: crosshair; }
+  #stage.erasing { cursor: none; }
+  #mk-textbox { position: absolute; display: none; z-index: 5; border: 1px dashed #1d4ed8; background: rgba(255,255,255,.92); padding: 1px 3px; font-family: Arial, sans-serif; outline: none; min-width: 120px; }
+  .swatches { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #c8ccd4; cursor: pointer; padding: 0; }
+  .swatch.on { box-shadow: 0 0 0 2px #1a1a2e; }
+  .clip-bar { font-size: 12px; margin-top: 6px; display: none; align-items: center; gap: 8px; }
+  .clip-bar.on { display: flex; }
   .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
   .cat-btn { text-align: left; padding: 6px 8px; border: 1px solid #d0d0dc; border-radius: 6px; background: white; font-size: 12px; cursor: pointer; line-height: 1.3; }
   .cat-btn:hover { background: #f0f0f8; }
@@ -186,6 +194,7 @@
       <h2>6 · Furniture &amp; appliances</h2>
       <div class="hint" style="margin:0 0 8px">Drag an item onto the plan, or pick it and click where it goes. Drag to move, R to rotate, Delete to remove. The dashed zone in front is working / door clearance.</div>
       <div class="status" id="cat-hint"></div>
+      <div class="clip-bar" id="clip-bar"><span id="clip-text" style="flex:1"></span><button class="btn" id="clip-paste">Paste (Ctrl+V)</button></div>
       <div id="catalogue" class="cat-grid"></div>
       <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Add a custom item</summary>
         <div class="row" style="margin-top:6px"><input class="field" type="text" id="c-name" placeholder="Name" maxlength="60" style="flex:1"></div>
@@ -214,9 +223,30 @@
       <div id="pin-detail"></div>
     </div>
 
+    <div class="sec" id="sec-markup" hidden>
+      <h2>9 · Markup &amp; notes</h2>
+      <div class="btns" style="margin-top:0">
+        <button class="btn" id="mk-pen" title="Draw freehand (B)">✎ Pen (B)</button>
+        <button class="btn" id="mk-arrow" title="Drag from the tail to the point (A)">➚ Arrow (A)</button>
+        <button class="btn" id="mk-text" title="Click on the plan and type (T)">T Text (T)</button>
+        <button class="btn" id="mk-erase" title="Drag over markup to rub it out (E)">⌫ Eraser (E)</button>
+        <button class="btn" id="mk-undo" title="Undo the last markup change (Ctrl+Z)">↶ Undo</button>
+      </div>
+      <div class="swatches" id="mk-colors"></div>
+      <div class="chips" id="mk-sizes" style="margin-top:8px"></div>
+      <div class="hint" id="mk-hint">Pick a tool, then draw on the plan. Without a tool, click a mark to select, move or edit it. The eraser removes pen, arrow and text marks only; furniture is removed with Delete.</div>
+      <div id="mk-selected"></div>
+    </div>
+
     <div class="sec" id="sec-export" hidden>
-      <h2>9 · Export</h2>
-      <div class="btns" style="margin-top:0"><button class="btn" id="dl-svg">Download clean SVG</button><button class="btn" id="dl-pdf">Original PDF</button></div>
+      <h2>10 · Export &amp; save</h2>
+      <div class="hint" style="margin-top:0">Name this version, then save an image to share or an editable file to reopen later.</div>
+      <div class="row"><input class="field" type="text" id="ver-name" maxlength="60" placeholder="Version name, e.g. Kitchen v2 – client comments" style="flex:1"></div>
+      <div class="btns" style="margin-top:4px"><button class="btn primary" id="dl-png">Download image (PNG)</button><button class="btn" id="dl-svg">Clean SVG</button><button class="btn" id="dl-pdf">Original PDF</button></div>
+      <div class="btns"><button class="btn primary" id="save-file">Save editable file</button><button class="btn" id="open-file">Open saved file…</button></div>
+      <input type="file" id="open-input" accept=".json,application/json" style="display:none">
+      <div class="status" id="file-status"></div>
+      <div class="hint">The editable file keeps the rooms, furniture, labels, pins, measurements and markup of this page. Open it later on the same plan to carry on.</div>
     </div>
   </div>
 
@@ -232,6 +262,7 @@
       <div class="placeholder" id="placeholder"><h3>No plan loaded</h3><p>Upload a vector PDF plan on the left.<br>It is converted into classified geometry you can declutter and measure.</p></div>
       <svg id="svg" xmlns="http://www.w3.org/2000/svg" style="display:none"><g id="world"></g><g id="overlay"></g></svg>
       <div id="hud"></div>
+      <input type="text" id="mk-textbox" maxlength="500" placeholder="Type, then Enter">
     </div>
     <div id="chat">
       <div id="chat-log"></div>
@@ -277,7 +308,14 @@ const st = {
   candidates: [],        // rooms found automatically, awaiting the user's choice
   pins: [], selectedPin: null, pinFilter: 'all', notesImported: false,
   options: [], activeOption: null, showProposals: true, showRejected: false,
+  marks: [],             // { id, type: 'pen'|'arrow'|'text', color, width, size, text, pts: [[x,y],...] }  (width/size in PDF points)
+  selMark: null, mkColor: '#dc2626', mkSize: 1, markUndo: [],
+  clip: null, pasteN: 0, // copied furniture item
 };
+const MARK_MODES = ['pen', 'arrow', 'text', 'erase'];
+const MK_COLORS = ['#dc2626', '#1d4ed8', '#059669', '#d97706', '#111827'];
+const MK_SIZES = [{ name: 'Fine', px: 2, text: 12 }, { name: 'Medium', px: 4, text: 16 }, { name: 'Bold', px: 7, text: 24 }];
+const ERASE_PX = 10;
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function el(name, attrs = {}, text) {
@@ -366,15 +404,7 @@ async function upload(file) {
 $('page-select').onchange = e => loadPage(+e.target.value);
 
 let loadSeq = 0;
-async function loadPage(n) {
-  await flushSave();                       // the page we are leaving gets its pending edits first
-  const my = ++loadSeq, job = st.jobId;
-  let scene;
-  try { scene = await api(`/api/jobs/${job}/pages/${n}`); }
-  catch (e) { if (my === loadSeq) { status('upload-status', 'error', e.message); if (st.page) $('page-select').value = st.page; } return; }
-  if (my !== loadSeq || st.jobId !== job) return;     // a newer load (or upload) superseded this one
-  st.page = n; st.scene = scene;
-  const sv = st.scene.state || {};
+function applyState(sv) {
   st.rooms = (sv.rooms || []).map(r => ({ id: r.id, name: r.name, poly: r.poly.map(p => [p.x, p.y]) }));
   st.items = (sv.items || []).map(i => ({ ...i }));
   st.customItems = (sv.custom_items || []).map(i => ({ ...i }));
@@ -387,7 +417,19 @@ async function loadPage(n) {
   st.pins = (sv.pins || []).map(q => ({ ...q, thread: (q.thread || []).map(c => ({ ...c })) }));
   st.notesImported = !!sv.notes_imported; st.selectedPin = null; st.showProposals = true; st.showRejected = false;
   $('show-prop').checked = true; $('show-rej').checked = false;
+  st.marks = (sv.marks || []).map(m => ({ ...m, pts: m.pts.map(p => [p.x, p.y]) }));
+}
+async function loadPage(n) {
+  await flushSave();                       // the page we are leaving gets its pending edits first
+  const my = ++loadSeq, job = st.jobId;
+  let scene;
+  try { scene = await api(`/api/jobs/${job}/pages/${n}`); }
+  catch (e) { if (my === loadSeq) { status('upload-status', 'error', e.message); if (st.page) $('page-select').value = st.page; } return; }
+  if (my !== loadSeq || st.jobId !== job) return;     // a newer load (or upload) superseded this one
+  st.page = n; st.scene = scene;
+  applyState(st.scene.state || {});
   st.selected = null; st.pending = []; st.calib = null; st.roomPts = []; setMode(null);
+  st.markUndo = []; st.selMark = null;
   chat.log = []; renderChat(); $('chat').classList.add('visible');
   st.candidates = []; renderCandidates();
   st.catOn = { ...CLEAN, text: 0 }; st.tidyOn = true;
@@ -662,7 +704,7 @@ function applyVisibility() {
 // ── sidebar ────────────────────────────────────────────────────────────────
 function renderSidebar() {
   const sc = st.scene;
-  for (const id of ['sec-views', 'sec-layers', 'sec-scale', 'sec-rooms', 'sec-furn', 'sec-options', 'sec-review', 'sec-export']) $(id).hidden = false;
+  for (const id of ['sec-views', 'sec-layers', 'sec-scale', 'sec-rooms', 'sec-furn', 'sec-options', 'sec-review', 'sec-markup', 'sec-export']) $(id).hidden = false;
   $('sec-views').hidden = sc.views.length === 0;
   renderScaleChips();
 
@@ -722,7 +764,7 @@ function renderSidebar() {
   $('ratio').value = av && av.ratio ? av.ratio : '';
   const paper = paperName(sc.width, sc.height);
   $('paper-hint').textContent = `Page is ${Math.round(sc.width * PT_TO_MM)} × ${Math.round(sc.height * PT_TO_MM)} mm${paper ? ' (' + paper + ')' : ''}. Entering a ratio is only right if the PDF was printed at full size (e.g. "1:50 @ A1" on an A1 page). Otherwise calibrate.`;
-  renderMeasures(); renderRooms(); renderCatalogue(); renderSelected(); renderOptions(); renderReview();
+  renderMeasures(); renderRooms(); renderCatalogue(); renderSelected(); renderOptions(); renderReview(); renderMarkTools(); renderClip();
 }
 const ROOM_HINT = 'Draw a room by clicking its corners (they snap to the walls). Click the first corner again, press Enter or double-click to close it. Needs a scale.';
 const jsonPut = body => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -828,7 +870,12 @@ function setMode(m) {
   if (m !== 'place' && m !== 'room') $('room-hint').textContent = ROOM_HINT;
   $('btn-room').classList.toggle('on', m === 'room');
   if (m !== 'calibrate') { st.calib = null; $('calib-form').hidden = true; }
-  stage.classList.toggle('measuring', !!m);
+  stage.classList.toggle('measuring', !!m && !MARK_MODES.includes(m));
+  stage.classList.toggle('marking', MARK_MODES.includes(m) && m !== 'erase');
+  stage.classList.toggle('erasing', m === 'erase');
+  cancelText();
+  for (const t of MARK_MODES) $('mk-' + t).classList.toggle('on', m === t);
+  if (MARK_MODES.includes(m)) { selectItem(null); selectMark(null); }
   $('btn-measure').classList.toggle('on', m === 'measure');
   $('btn-calibrate').classList.toggle('on', m === 'calibrate');
   $('mode-hint').textContent = m === 'measure' ? 'Press on the first point and drag to the second (or click both). Measure as many as you like; Esc to stop.'
@@ -881,6 +928,7 @@ function renderOverlay() {
       overlay.appendChild(t);
     }
   };
+  if (st.mode === 'erase' && st.hover) overlay.appendChild(el('circle', { cx: st.hover[0], cy: st.hover[1], r: ERASE_PX / k, fill: 'rgba(255,255,255,.5)', stroke: '#6b7280', 'stroke-width': 1, 'stroke-dasharray': '3 3', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
   if (st.mode === 'room' && st.roomPts.length) {
     const pts = st.roomPts.concat(st.hover ? [st.hover] : []);
     overlay.appendChild(el('polyline', { points: pts.map(q => q.join(',')).join(' '), fill: 'none', stroke: '#059669', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
@@ -892,7 +940,7 @@ function renderOverlay() {
     const a = st.pending[0], b = st.hover;
     overlay.appendChild(el('circle', { cx: a[0], cy: a[1], r: 4 / k, fill: '#cc0000' }));
     if (b) draw(a, b, '#cc0000', lengthLabel(a, b, viewAt(a[0], a[1])));
-  } else if (st.hover) {
+  } else if (st.hover && !MARK_MODES.includes(st.mode)) {
     overlay.appendChild(el('circle', { cx: st.hover[0], cy: st.hover[1], r: 5 / k, fill: 'none', stroke: '#cc0000', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
   }
 }
@@ -1042,6 +1090,19 @@ function drawItem(g, it, k, selected, ghost) {
   const fs = 10 / k;
   g.appendChild(haloText(it.x, it.y - fs * 0.1, fs, rejected ? '#6b7280' : '#1e3a8a', 700, (it.status === 'accepted' ? '✓ ' : it.source === 'ai' && it.status === 'pending' ? '✦ ' : '') + it.name));
   g.appendChild(haloText(it.x, it.y + fs * 1.1, fs * 0.9, rejected ? '#6b7280' : '#1e3a8a', 400, `${Math.round(it.w)}×${Math.round(it.d)}`));
+  if (it.label) {      // the user's own text, wrapped to the block's width and kept horizontal
+    const across = (((it.rot || 0) % 180) ? it.d : it.w) / geo.s, perLine = Math.max(14, Math.floor(across / (fs * 0.5)));
+    wrapText(it.label, perLine, 4).forEach((ln, i) => g.appendChild(haloText(it.x, it.y + fs * (2.3 + i * 1.1), fs * 0.9, rejected ? '#6b7280' : '#92400e', 600, ln)));
+  }
+}
+function wrapText(text, perLine, maxLines) {
+  const out = []; let cur = '';
+  for (const w of String(text).split(/\s+/).filter(Boolean)) {
+    if (cur && (cur + ' ' + w).length > perLine) { out.push(cur); cur = w; } else cur = cur ? cur + ' ' + w : w;
+  }
+  if (cur) out.push(cur);
+  if (out.length > maxLines) { out.length = maxLines; out[maxLines - 1] = out[maxLines - 1].replace(/.{0,2}$/, '…'); }
+  return out;
 }
 function handlePos(it, geo) {   // world position of the four edge handles
   const s = geo.s, hw = it.w / 2 / s, hd = it.d / 2 / s;
@@ -1113,6 +1174,7 @@ function buildExtras(g, k) {
     }
   }
   if (st.mode === 'place' && st.placing && st.hover) drawItem(g, { ...st.placing, id: 'ghost', status: 'accepted', x: st.hover[0], y: st.hover[1], rot: st.placeRot || 0 }, k, false, true);
+  drawMarks(g, k);
   drawPins(g, k);
 }
 
@@ -1126,7 +1188,7 @@ function placeAt(x, y) {
   selectItem(it.id);
   scheduleSave(); renderRooms();
 }
-function selectItem(id) { st.selected = id; if (id) st.selectedPin = null; renderSelected(); renderReview(); renderOverlay(); }
+function selectItem(id) { st.selected = id; if (id) { st.selectedPin = null; if (st.selMark) { st.selMark = null; renderMarkPanel(); } } renderSelected(); renderReview(); renderOverlay(); }
 function rotateSelected() { const it = st.items.find(i => i.id === st.selected); if (!it) return; it.rot = ((it.rot || 0) + 90) % 360; scheduleSave(); renderSelected(); renderOverlay(); }
 function deleteSelected() { st.items = st.items.filter(i => i.id !== st.selected); st.selected = null; scheduleSave(); renderRooms(); renderSelected(); renderOverlay(); }
 function nudge(it, key, mm) {
@@ -1203,7 +1265,7 @@ function renderSelected() {
   if (!it) return;
   const wrap = document.createElement('div'); wrap.className = 'sel-box';
   const title = document.createElement('div'); title.className = 'hint'; title.style.margin = '0 0 6px';
-  title.textContent = 'Resize: drag the white handles on the block, or type exact sizes.';
+  title.textContent = 'Resize: drag the white handles on the block, or type exact sizes. "Text" is written inside the block.';
   wrap.appendChild(title);
   if (it.source === 'ai') {
     const why = document.createElement('div'); why.className = 'stat'; why.style.cssText = 'color:#6d28d9;margin-bottom:6px';
@@ -1218,6 +1280,7 @@ function renderSelected() {
     row.append(l, i); wrap.appendChild(row);
   };
   field('Name', it.name, v => { it.name = v.slice(0, 80) || it.name; }, 'text');
+  field('Text', it.label || '', v => { it.label = v.trim().slice(0, 200); }, 'text');
   field('Width mm', Math.round(it.w), v => { if (+v > 0) it.w = +v; });
   field('Depth mm', Math.round(it.d), v => { if (+v > 0) it.d = +v; });
   field('Clear mm', Math.round(it.clear), v => { if (+v >= 0) it.clear = +v; });
@@ -1232,7 +1295,7 @@ function renderSelected() {
   const r1 = document.createElement('div'); r1.className = 'btns';
   r1.append(btn('Accept ✓', setStatus('accepted')), btn('Reject ✕', setStatus('rejected')), btn('Reset', setStatus('pending')));
   const r2 = document.createElement('div'); r2.className = 'btns';
-  r2.append(btn('Rotate 90° (R)', rotateSelected), btn('Delete', deleteSelected),
+  r2.append(btn('Rotate 90° (R)', rotateSelected), btn('Copy (Ctrl+C)', () => copySelected(false)), btn('Cut (Ctrl+X)', () => copySelected(true)), btn('Delete', deleteSelected),
     btn('Save size as preset', () => { st.customItems.push({ kind: 'custom', name: it.name, w: Math.round(it.w), d: Math.round(it.d), clear: Math.round(it.clear) }); scheduleSave(); renderCatalogue(); }));
   wrap.append(r1, r2);
   box.appendChild(wrap);
@@ -1287,8 +1350,8 @@ $('dl-csv').onclick = () => {
   const optName = id => (st.options.find(o => o.id === id) || {}).name || '';
   const lines = [[`Room (free area is for ${optName(st.activeOption)})`, 'Area m2', 'Perimeter m', 'Furniture m2', 'Free m2', 'Items'].map(q).join(',')];
   for (const r of st.rooms) { const m = roomMetrics(r); lines.push([r.name, m.area == null ? '' : m.area.toFixed(2), m.perim == null ? '' : m.perim.toFixed(2), m.furn.toFixed(2), m.free == null ? '' : m.free.toFixed(2), m.n].map(q).join(',')); }
-  lines.push('', ['Item', 'Width mm', 'Depth mm', 'Room', 'Option', 'Status'].map(q).join(','));
-  for (const i of st.items) { const room = st.rooms.find(r => pointInPoly(i.x, i.y, r.poly)); lines.push([i.name, Math.round(i.w), Math.round(i.d), room ? room.name : '', optName(i.option), i.status].map(q).join(',')); }
+  lines.push('', ['Item', 'Width mm', 'Depth mm', 'Room', 'Option', 'Status', 'Text'].map(q).join(','));
+  for (const i of st.items) { const room = st.rooms.find(r => pointInPoly(i.x, i.y, r.poly)); lines.push([i.name, Math.round(i.w), Math.round(i.d), room ? room.name : '', optName(i.option), i.status, i.label || ''].map(q).join(',')); }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
   a.download = (st.filename.replace(/\.pdf$/i, '') || 'plan') + '-schedule.csv';
@@ -1647,8 +1710,9 @@ function statePayload() {
     active_option: st.activeOption || '',
     notes_imported: st.notesImported,
     rooms: st.rooms.map(r => ({ id: r.id, name: r.name, poly: r.poly.map(pt) })),
-    items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: clampNum(i.w, 1, 50000), d: clampNum(i.d, 1, 50000), clear: clampNum(i.clear, 0, 10000), option: i.option, status: i.status, source: i.source || 'user', note: i.note || '', replaces: i.replaces || '', x: i.x, y: i.y, rot: i.rot || 0 })),
+    items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: clampNum(i.w, 1, 50000), d: clampNum(i.d, 1, 50000), clear: clampNum(i.clear, 0, 10000), option: i.option, status: i.status, source: i.source || 'user', note: i.note || '', label: i.label || '', replaces: i.replaces || '', x: i.x, y: i.y, rot: i.rot || 0 })),
     measures: st.measures.map(m => ({ a: pt(m.a), b: pt(m.b) })),
+    marks: st.marks.map(m => ({ id: m.id, type: m.type, color: m.color, width: m.width, size: m.size, text: m.text || '', pts: m.pts.map(pt) })),
     custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: clampNum(c.w, 1, 50000), d: clampNum(c.d, 1, 50000), clear: clampNum(c.clear, 0, 10000) })),
   };
 }
@@ -1673,6 +1737,203 @@ window.addEventListener('beforeunload', () => {
   const p = pendingSave; pendingSave = null;
   try { fetch(`/api/jobs/${p.job}/pages/${p.page}/state`, { ...jsonPut(p.body), keepalive: true }); } catch (_) {}
 });
+
+
+// ── markup: pen, arrows, text, eraser ──────────────────────────────────────
+// Marks live in PDF points like everything else, so they stay put when you zoom and print at the right size.
+const markSnapshot = () => JSON.stringify(st.marks);
+function pushMarkUndo() { st.markUndo.push(markSnapshot()); if (st.markUndo.length > 60) st.markUndo.shift(); }
+function undoMark() {
+  if (!st.markUndo.length) return;
+  st.marks = JSON.parse(st.markUndo.pop());
+  if (!st.marks.some(m => m.id === st.selMark)) st.selMark = null;
+  markChanged();
+}
+function markChanged() { scheduleSave(); renderMarkPanel(); renderMarkTools(); renderOverlay(); }
+function distSeg(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+  const t = L ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+function textBox(m) { const [x, y] = m.pts[0]; return [x, y - m.size, x + Math.max(1, m.text.length) * m.size * 0.58, y + m.size * 0.3]; }
+function markHit(m, x, y, tol) {
+  if (m.type === 'text') { const b = textBox(m); return x >= b[0] - tol && x <= b[2] + tol && y >= b[1] - tol && y <= b[3] + tol; }
+  const r = tol + m.width / 2;
+  if (m.pts.length === 1) return Math.hypot(x - m.pts[0][0], y - m.pts[0][1]) <= r;
+  for (let i = 1; i < m.pts.length; i++) if (distSeg(x, y, m.pts[i - 1][0], m.pts[i - 1][1], m.pts[i][0], m.pts[i][1]) <= r) return true;
+  return false;
+}
+function hitMark(x, y) {
+  const tol = 6 / st.view.k;
+  for (let i = st.marks.length - 1; i >= 0; i--) if (markHit(st.marks[i], x, y, tol)) return st.marks[i];
+  return null;
+}
+function simplify(pts, eps) {      // Ramer–Douglas–Peucker, so long strokes stay light to store and redraw
+  if (pts.length < 3) return pts;
+  const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop(); let best = -1, bd = eps;
+    for (let i = a + 1; i < b; i++) { const d = distSeg(pts[i][0], pts[i][1], pts[a][0], pts[a][1], pts[b][0], pts[b][1]); if (d > bd) { bd = d; best = i; } }
+    if (best >= 0) { keep[best] = 1; stack.push([a, best], [best, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+function drawMarks(g, k) {
+  for (const m of st.marks) {
+    const sel = g === overlay && m.id === st.selMark;
+    const common = { 'pointer-events': 'none' };
+    if (sel) {
+      if (m.type === 'text') { const b = textBox(m); g.appendChild(el('rect', { x: b[0] - 3 / k, y: b[1] - 3 / k, width: b[2] - b[0] + 6 / k, height: b[3] - b[1] + 6 / k, fill: 'rgba(29,78,216,.08)', stroke: '#1d4ed8', 'stroke-width': 1, 'stroke-dasharray': '4 3', 'vector-effect': 'non-scaling-stroke', ...common })); }
+      else g.appendChild(el('polyline', { points: m.pts.map(q => q.join(',')).join(' '), fill: 'none', stroke: '#1d4ed8', 'stroke-opacity': 0.35, 'stroke-width': m.width + 8 / k, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...common }));
+    }
+    if (m.type === 'text') {
+      g.appendChild(el('text', { x: m.pts[0][0], y: m.pts[0][1], 'font-size': m.size, fill: m.color, 'font-family': 'Arial,sans-serif', 'font-weight': 700, stroke: '#fff', 'stroke-width': m.size / 5, 'paint-order': 'stroke', ...common }, m.text));
+    } else if (m.type === 'arrow' && m.pts.length > 1) {
+      const [a, b] = m.pts, len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (len < 1e-6) continue;
+      const ux = (b[0] - a[0]) / len, uy = (b[1] - a[1]) / len, h = Math.min(len * 0.6, Math.max(m.width * 4.5, 6 / k)), w = h * 0.42;
+      const bx = b[0] - ux * h, by = b[1] - uy * h;
+      g.appendChild(el('line', { x1: a[0], y1: a[1], x2: bx + ux * h * 0.2, y2: by + uy * h * 0.2, stroke: m.color, 'stroke-width': m.width, 'stroke-linecap': 'round', ...common }));
+      g.appendChild(el('polygon', { points: `${b[0]},${b[1]} ${bx - uy * w},${by + ux * w} ${bx + uy * w},${by - ux * w}`, fill: m.color, stroke: m.color, 'stroke-width': m.width * 0.3, 'stroke-linejoin': 'round', ...common }));
+    } else {
+      g.appendChild(el('polyline', { points: (m.pts.length === 1 ? [m.pts[0], [m.pts[0][0] + 0.01, m.pts[0][1]]] : m.pts).map(q => q.join(',')).join(' '), fill: 'none', stroke: m.color, 'stroke-width': m.width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...common }));
+    }
+  }
+}
+function selectMark(id) {
+  if (id === st.selMark) return;
+  st.selMark = id; if (id) { st.selected = null; st.selectedPin = null; renderSelected(); renderReview(); }
+  renderMarkPanel(); renderOverlay();
+}
+function deleteMark(id) { pushMarkUndo(); st.marks = st.marks.filter(m => m.id !== id); if (st.selMark === id) st.selMark = null; markChanged(); }
+function startMark(wx, wy) {       // returns the in-progress drag state for the pen, arrow and eraser
+  const mkSz = MK_SIZES[st.mkSize], k = st.view.k;
+  if (st.mode === 'erase') { const d = { kind: 'erase', undone: false }; eraseAt(d, wx, wy); return d; }
+  if (st.mode !== 'pen' && st.mode !== 'arrow') return null;
+  pushMarkUndo();
+  const m = { id: uid(), type: st.mode, color: st.mkColor, width: mkSz.px / k, size: mkSz.text / k, text: '', pts: st.mode === 'pen' ? [[wx, wy]] : [[wx, wy], [wx, wy]] };
+  st.marks.push(m);
+  return { kind: 'draw', m };
+}
+function extendMark(d, wx, wy) {
+  if (d.kind === 'erase') { eraseAt(d, wx, wy); return; }
+  const m = d.m;
+  if (m.type === 'arrow') m.pts[1] = [wx, wy];
+  else { const l = m.pts[m.pts.length - 1]; if (Math.hypot(wx - l[0], wy - l[1]) * st.view.k >= 1.5) m.pts.push([wx, wy]); }
+  renderOverlay();
+}
+function eraseAt(d, wx, wy) {
+  st.hover = [wx, wy];
+  const tol = ERASE_PX / st.view.k, hit = st.marks.filter(m => markHit(m, wx, wy, tol));
+  if (hit.length) {
+    if (!d.undone) { st.markUndo.push(markSnapshot()); d.undone = true; }
+    st.marks = st.marks.filter(m => !hit.includes(m));
+    if (hit.some(m => m.id === st.selMark)) st.selMark = null;
+    d.removed = true;
+  }
+  renderOverlay();
+}
+function finishMark(d) {
+  if (d.kind === 'erase') { if (d.removed) markChanged(); else renderOverlay(); return; }
+  const m = d.m;
+  if (m.type === 'arrow' && Math.hypot(m.pts[1][0] - m.pts[0][0], m.pts[1][1] - m.pts[0][1]) * st.view.k < 4) { st.marks.pop(); st.markUndo.pop(); renderOverlay(); return; }   // a click, not an arrow
+  if (m.type === 'pen') { m.pts = simplify(m.pts, 0.6 / st.view.k); if (m.pts.length > 3000) m.pts = m.pts.filter((_, i) => i % Math.ceil(m.pts.length / 3000) === 0); }
+  markChanged();
+}
+function cancelMark(d) {
+  if (d.kind === 'draw') { st.marks = st.marks.filter(m => m !== d.m); st.markUndo.pop(); }
+  renderOverlay();
+}
+
+const tb = $('mk-textbox');
+let textAt = null;
+function cancelText() { if (!textAt) return; textAt = null; tb.style.display = 'none'; tb.value = ''; }
+function startText(x, y, existing) {
+  cancelText();
+  const px = MK_SIZES[st.mkSize].text, { k, tx, ty } = st.view;
+  textAt = { x, y, size: px / k, color: st.mkColor, existing };
+  Object.assign(tb.style, { display: 'block', left: (x * k + tx) + 'px', top: (y * k + ty - px) + 'px', fontSize: px + 'px', color: st.mkColor });
+  tb.value = ''; tb.focus();
+}
+function commitText() {
+  if (!textAt) return;
+  const t = tb.value.trim(), a = textAt; cancelText();
+  if (!t) return;
+  pushMarkUndo();
+  const m = { id: uid(), type: 'text', color: a.color, width: 1, size: a.size, text: t.slice(0, 500), pts: [[a.x, a.y]] };
+  st.marks.push(m); st.selMark = null;
+  markChanged();
+}
+tb.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitText(); } else if (e.key === 'Escape') { e.preventDefault(); cancelText(); } });
+tb.addEventListener('blur', commitText);
+
+function renderMarkTools() {
+  const c = $('mk-colors'); c.textContent = '';
+  const cur = st.marks.find(m => m.id === st.selMark);
+  for (const col of MK_COLORS) {
+    const b = document.createElement('button'); b.className = 'swatch' + (col === st.mkColor ? ' on' : ''); b.style.background = col; b.title = 'Colour for new marks';
+    b.onclick = () => { st.mkColor = col; if (cur && !MARK_MODES.includes(st.mode)) { pushMarkUndo(); cur.color = col; markChanged(); } renderMarkTools(); };
+    c.appendChild(b);
+  }
+  const z = $('mk-sizes'); z.textContent = '';
+  MK_SIZES.forEach((sz, i) => {
+    const b = document.createElement('button'); b.className = 'chip' + (i === st.mkSize ? ' on' : ''); b.textContent = sz.name;
+    b.onclick = () => { st.mkSize = i; renderMarkTools(); };
+    z.appendChild(b);
+  });
+  $('mk-undo').disabled = !st.markUndo.length;
+}
+function renderMarkPanel() {
+  const box = $('mk-selected'); box.textContent = '';
+  const m = st.marks.find(x => x.id === st.selMark);
+  if (!m) return;
+  const wrap = document.createElement('div'); wrap.className = 'sel-box';
+  const t = document.createElement('div'); t.className = 'hint'; t.style.margin = '0 0 6px';
+  t.textContent = `Selected ${m.type === 'pen' ? 'pen stroke' : m.type}. Drag it to move it; pick a colour above to recolour it.`;
+  wrap.appendChild(t);
+  if (m.type === 'text') {
+    const row = document.createElement('div'); row.className = 'row';
+    const i = document.createElement('input'); i.className = 'field'; i.type = 'text'; i.value = m.text; i.maxLength = 500; i.style.flex = 1;
+    i.onchange = () => { if (!i.value.trim()) return; pushMarkUndo(); m.text = i.value.trim(); markChanged(); };
+    row.appendChild(i); wrap.appendChild(row);
+  }
+  const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'Delete mark'; b.onclick = () => deleteMark(m.id);
+  const r = document.createElement('div'); r.className = 'btns'; r.appendChild(b); wrap.appendChild(r);
+  box.appendChild(wrap);
+}
+for (const [id, mode] of [['mk-pen', 'pen'], ['mk-arrow', 'arrow'], ['mk-text', 'text'], ['mk-erase', 'erase']]) $(id).onclick = () => setMode(st.mode === mode ? null : mode);
+$('mk-undo').onclick = undoMark;
+
+// ── copy, cut and paste furniture ──────────────────────────────────────────
+function copySelected(cut) {
+  const it = st.items.find(i => i.id === st.selected); if (!it) return;
+  st.clip = { item: { ...it }, page: st.page, option: it.option, cut: !!cut }; st.pasteN = 0;
+  if (cut) deleteSelected();
+  renderClip();
+  const h = $('cat-hint'); h.className = 'status success'; h.textContent = `${cut ? 'Cut' : 'Copied'} ${it.name}. Press Ctrl+V or Paste to place it${cut ? '' : ' (also works in another option or page)'}.`;
+}
+function pasteClip() {
+  const c = st.clip; if (!c || !st.scene) return;
+  const src = c.item, samePlace = c.page === st.page;
+  let x = src.x, y = src.y;
+  if (!samePlace) [x, y] = centreOfView();
+  else if (c.option === st.activeOption && !c.cut) {        // same spot would hide the copy, so step it aside
+    st.pasteN++;
+    const s = mmPerPtAt(src.x, src.y) || 25.4 / 72 * 10, d = (300 * st.pasteN) / s;
+    x += d; y += d;
+  }
+  const it = { id: uid(), kind: src.kind, name: src.name, label: src.label || '', w: src.w, d: src.d, clear: src.clear, option: st.activeOption, status: c.cut ? src.status : 'pending', x, y, rot: src.rot || 0 };
+  st.items.push(it);
+  if (c.cut) { c.cut = false; c.option = it.option; c.page = st.page; c.item = { ...it }; }
+  selectItem(it.id); scheduleSave(); renderRooms(); renderOptions(); renderClip();
+  if (!itemGeom(it)) needScale(it.x, it.y);
+}
+function renderClip() {
+  const on = !!st.clip; $('clip-bar').classList.toggle('on', on);
+  if (on) $('clip-text').textContent = `${st.clip.cut ? 'Cut' : 'Copied'}: ${st.clip.item.name}`;
+}
+$('clip-paste').onclick = pasteClip;
 
 // ── pan / zoom ─────────────────────────────────────────────────────────────
 function applyView() {
@@ -1716,16 +1977,19 @@ let drag = null;
 svg.addEventListener('pointerdown', e => {
   if (!st.scene) return;
   svg.setPointerCapture(e.pointerId);
-  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null, button: e.button };
+  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null, mark: null, markMove: null, button: e.button };
   if (e.button !== 0) return;               // right and middle buttons only pan
   if (st.mode === 'measure' && st.pending.length === 0) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.ruler = snap(wx, wy).p; }
+  if (st.mode === 'pen' || st.mode === 'arrow' || st.mode === 'erase') { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.mark = startMark(wx, wy); return; }
   if (!st.mode) {
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
     const sel = st.items.find(i => i.id === st.selected), side = sel && shownItems().includes(sel) ? hitHandle(sel, wx, wy) : null;
     const pin = side ? null : hitPin(wx, wy);
-    const hit = side || pin ? null : hitItem(wx, wy);
+    const mark = side || pin ? null : hitMark(wx, wy);
+    const hit = side || pin || mark ? null : hitItem(wx, wy);
     if (side) drag.handle = { side, it: sel, it0: { ...sel } };
     else if (pin) { drag.pin = { q: pin, ox: pin.x - wx, oy: pin.y - wy }; selectPin(pin.id); }
+    else if (mark) { drag.markMove = { m: mark, last: [wx, wy], undone: false }; selectMark(mark.id); }
     else if (hit) { drag.item = { it: hit, ox: hit.x - wx, oy: hit.y - wy }; selectItem(hit.id); }
   }
 });
@@ -1734,6 +1998,16 @@ svg.addEventListener('pointermove', e => {
   if (drag) {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(dx, dy) > 4) drag.moved = true;
+    if (drag.mark) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); extendMark(drag.mark, wx, wy); return; }
+    if (drag.markMove) {
+      if (drag.moved) {
+        const mm = drag.markMove, [wx, wy] = screenToWorld(e.clientX, e.clientY);
+        if (!mm.undone) { const snap0 = markSnapshot(); st.markUndo.push(snap0); mm.undone = true; }
+        const dx = wx - mm.last[0], dy = wy - mm.last[1]; mm.last = [wx, wy];
+        mm.m.pts = mm.m.pts.map(q => [q[0] + dx, q[1] + dy]); renderOverlay();
+      }
+      return;
+    }
     if (drag.ruler) {
       if (drag.moved) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); st.pending = [drag.ruler]; st.hover = snap(wx, wy).p; renderOverlay(); }
       return;
@@ -1753,7 +2027,7 @@ svg.addEventListener('pointermove', e => {
     if (drag.moved) { st.view.tx = drag.tx + dx; st.view.ty = drag.ty + dy; applyView(); return; }
   }
   const [x, y] = screenToWorld(e.clientX, e.clientY);
-  if (st.mode) { st.hover = st.mode === 'place' ? [x, y] : snap(x, y).p; renderOverlay(); }
+  if (st.mode) { st.hover = st.mode === 'place' || MARK_MODES.includes(st.mode) ? [x, y] : snap(x, y).p; if (st.mode !== 'text') renderOverlay(); }
   const hud = $('hud'), v = viewAt(x, y);
   hud.style.display = 'block';
   hud.textContent = `x ${x.toFixed(1)}  y ${y.toFixed(1)} pt` + (v && v.mm_per_pt ? `  ·  ${fmtLen(x * v.mm_per_pt)} , ${fmtLen(y * v.mm_per_pt)} from page origin` : '');
@@ -1761,8 +2035,10 @@ svg.addEventListener('pointermove', e => {
 svg.addEventListener('pointerup', e => {
   if (!drag) return;                         // the press did not start on the plan (e.g. a chip or item dropped here)
   if (drag.button !== 0) { drag = null; return; }
-  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin), ruler = drag && drag.ruler; drag = null;
+  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin), ruler = drag && drag.ruler, mkDrag = drag && drag.mark, mkMove = drag && drag.markMove; drag = null;
   if (!st.scene) return;
+  if (mkDrag) { finishMark(mkDrag); return; }
+  if (mkMove) { if (wasDrag) markChanged(); return; }
   if (ruler && wasDrag) {                      // press-drag-release: the ruler runs from where you pressed to where you let go
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
     st.pending = []; onPick(ruler); onPick(snap(wx, wy).p); return;
@@ -1778,48 +2054,67 @@ svg.addEventListener('pointerup', e => {
     if (cand && !st.selected && !st.selectedPin) { cand.selected = !cand.selected; renderCandidates(); renderOverlay(); return; }
     if (st.selected) selectItem(null);
     if (st.selectedPin) selectPin(null);
+    if (st.selMark) selectMark(null);
     return;
   }
   if (st.mode === 'place') return placeAt(x, y);
+  if (st.mode === 'text') return startText(x, y);
   if (st.mode === 'pin') return addPin(x, y);
   onPick(snap(x, y).p);
 });
 svg.addEventListener('pointercancel', () => {
   const moved = drag && drag.moved && (drag.item || drag.handle || drag.pin);
+  if (drag && drag.mark) cancelMark(drag.mark);
+  if (drag && drag.markMove && drag.markMove.undone) { st.marks = JSON.parse(st.markUndo.pop()); }
   drag = null; st.pending = []; st.hover = null; renderOverlay();
   if (moved) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); }
 });
 svg.addEventListener('dblclick', () => { if (st.mode === 'room') closeRoom(); });
 window.addEventListener('keydown', e => {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
   const sel = st.items.find(i => i.id === st.selected);
-  if (e.key === 'Escape') { if (st.mode) setMode(null); else selectItem(null); selectPin(null); }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && st.scene) {
+    const key = e.key.toLowerCase();
+    if (key === 'c' && sel) { e.preventDefault(); copySelected(false); }
+    else if (key === 'x' && sel) { e.preventDefault(); copySelected(true); }
+    else if (key === 'v' && st.clip) { e.preventDefault(); pasteClip(); }
+    else if (key === 'z') { e.preventDefault(); undoMark(); }
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'Escape') { if (st.mode) setMode(null); else { selectItem(null); selectMark(null); } selectPin(null); }
   else if (e.key === 'Enter' && st.mode === 'room') closeRoom();
   else if ((e.key === 'd' || e.key === 'D') && st.scene) $('btn-room').click();
   else if ((e.key === 'p' || e.key === 'P') && st.scene) $('btn-pin').click();
   else if ((e.key === 'r' || e.key === 'R') && st.mode === 'place') { st.placeRot = ((st.placeRot || 0) + 90) % 360; renderOverlay(); }
   else if ((e.key === 'r' || e.key === 'R') && sel) rotateSelected();
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && st.selMark) { e.preventDefault(); deleteMark(st.selMark); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) deleteSelected();
   else if (sel && e.key.startsWith('Arrow')) { e.preventDefault(); nudge(sel, e.key, e.shiftKey ? 100 : 10); }
   else if (e.key === 'm' || e.key === 'M') $('btn-measure').click();
   else if (e.key === 'c' || e.key === 'C') $('btn-calibrate').click();
   else if (e.key === 'f' || e.key === 'F') fit();
+  else if ((e.key === 'b' || e.key === 'B') && st.scene) $('mk-pen').click();
+  else if ((e.key === 'a' || e.key === 'A') && st.scene) $('mk-arrow').click();
+  else if ((e.key === 't' || e.key === 'T') && st.scene) { e.preventDefault(); $('mk-text').click(); }
+  else if ((e.key === 'e' || e.key === 'E') && st.scene) $('mk-erase').click();
 });
 window.addEventListener('resize', () => { if (st.scene) applyView(); });
 
 // ── export ─────────────────────────────────────────────────────────────────
 $('dl-pdf').onclick = () => { if (st.jobId) location.href = `/api/jobs/${st.jobId}/original.pdf`; };
-$('dl-svg').onclick = () => {
-  if (!st.scene) return;
+function buildExportSvg(scale) {
   const b = visibleBox(), pad = 20;
   const clone = world.cloneNode(true);
   clone.removeAttribute('transform'); clone.removeAttribute('id');
   for (const c of CAT_ORDER) { const g = clone.querySelector('#cat-' + c); if (g && !st.catOn[c]) g.remove(); }
   const n = clone.querySelector('#notes'); if (n && !st.notesOn) n.remove();
   for (const id in st.viewOn) if (!st.viewOn[id]) clone.querySelectorAll('.v-' + id).forEach(x => x.remove());
-  const out = el('svg', { xmlns: SVGNS, viewBox: `${b[0] - pad} ${b[1] - pad} ${b[2] - b[0] + 2 * pad} ${b[3] - b[1] + 2 * pad}` });
+  const w = b[2] - b[0] + 2 * pad, h = b[3] - b[1] + 2 * pad;
+  const out = el('svg', { xmlns: SVGNS, viewBox: `${b[0] - pad} ${b[1] - pad} ${w} ${h}` });
+  if (scale) { out.setAttribute('width', Math.round(w * scale)); out.setAttribute('height', Math.round(h * scale)); }
   out.appendChild(el('style', {}, 'path{fill:none;stroke-linecap:round;stroke-linejoin:round}.c-structure{stroke-width:.72}.c-detail,.c-dashed{stroke-width:.36}.c-fine,.c-hatch{stroke-width:.12}.c-fills,.c-text{stroke:none}.note{fill:#1d4ed8;font-family:Arial,sans-serif}'));
+  if (scale) out.appendChild(el('rect', { x: b[0] - pad, y: b[1] - pad, width: w, height: h, fill: '#fff' }));
   out.appendChild(clone);
   const ov = el('g');
   buildExtras(ov, 1);
@@ -1828,11 +2123,71 @@ $('dl-svg').onclick = () => {
     ov.appendChild(el('text', { x: (m.a[0] + m.b[0]) / 2, y: (m.a[1] + m.b[1]) / 2 - 3, 'font-size': 9, 'text-anchor': 'middle', fill: '#cc0000', 'font-family': 'Arial,sans-serif' }, lengthLabel(m.a, m.b, m.view)));
   }
   out.appendChild(ov);
-  const blob = new Blob([new XMLSerializer().serializeToString(out)], { type: 'image/svg+xml' });
+  return { svg: out, w, h };
+}
+// File names carry the plan, page, version name and date, so saved versions can be told apart.
+function exportName(ext, tag) {
+  const base = (st.filename.replace(/\.pdf$/i, '') || 'plan').replace(/[^\w.-]+/g, '_');
+  const ver = $('ver-name').value.trim().replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '');
+  const d = new Date(), pad2 = n => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}_${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+  return [base, (st.pages.length > 1 ? 'p' + st.page : ''), ver || tag, stamp].filter(Boolean).join('_') + ext;
+}
+function download(blob, name) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = (st.filename.replace(/\.pdf$/i, '') || 'plan') + '-clean.svg';
-  a.click(); URL.revokeObjectURL(a.href);
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$('dl-svg').onclick = () => {
+  if (!st.scene) return;
+  download(new Blob([new XMLSerializer().serializeToString(buildExportSvg().svg)], { type: 'image/svg+xml' }), exportName('.svg', 'clean'));
+};
+$('dl-png').onclick = async () => {
+  if (!st.scene) return;
+  try {
+    const b = visibleBox(), longest = Math.max(b[2] - b[0], b[3] - b[1]) + 40;
+    const scale = Math.min(4, 6000 / longest);      // sharp, but never beyond what a browser canvas can hold
+    const { svg: out, w, h } = buildExportSvg(scale);
+    const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(out)], { type: 'image/svg+xml' }));
+    const img = new Image();
+    await new Promise((ok, no) => { img.onload = ok; img.onerror = () => no(new Error('could not draw the plan')); img.src = url; });
+    const cv = document.createElement('canvas'); cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
+    const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    URL.revokeObjectURL(url);
+    const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+    if (!blob) throw new Error('the image is too large for this browser');
+    download(blob, exportName('.png', 'markup'));
+  } catch (e) { status('file-status', 'error', 'Could not make the image: ' + e.message); }
+};
+
+// ── editable save file ─────────────────────────────────────────────────────
+const FILE_FORMAT = 'architectural-plans-tool/page-state';
+$('save-file').onclick = async () => {
+  if (!st.scene) return;
+  const file = { format: FILE_FORMAT, version: 1, name: $('ver-name').value.trim(), saved: new Date().toISOString(), source_file: st.filename, page: st.page, state: statePayload() };
+  const name = exportName('.json', 'markup');
+  download(new Blob([JSON.stringify(file, null, 1)], { type: 'application/json' }), name);
+  status('file-status', 'success', `Saved ${name}. Use "Open saved file…" to carry on from it.`);
+};
+$('open-file').onclick = () => { if (st.scene) $('open-input').click(); };
+$('open-input').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f || !st.scene) return;
+  try {
+    let file;
+    try { file = JSON.parse(await f.text()); } catch (_) { throw new Error('that is not a saved file from this tool'); }
+    if (!file || file.format !== FILE_FORMAT || !file.state) throw new Error('that is not a saved file from this tool');
+    const from = `"${file.name || 'unnamed'}" (${file.source_file || 'unknown plan'}, page ${file.page}${file.saved ? ', saved ' + new Date(file.saved).toLocaleString() : ''})`;
+    const other = file.source_file && file.source_file !== st.filename ? `\n\nWarning: it was saved from ${file.source_file}, but you have ${st.filename} open.` : '';
+    if (!confirm(`Replace everything on this page (rooms, furniture, pins, measurements and markup) with ${from}?${other}`)) return;
+    await flushSave();
+    await api(`/api/jobs/${st.jobId}/pages/${st.page}/state`, jsonPut(file.state));      // the server checks the file before anything changes on screen
+    applyState(file.state);
+    st.selected = null; st.selMark = null; st.markUndo = []; st.candidates = []; setMode(null);
+    renderCandidates(); renderSidebar(); renderOverlay();
+    status('file-status', 'success', `Opened ${from}.`);
+  } catch (err) { status('file-status', 'error', 'Could not open the file: ' + err.message); }
 };
 </script>
 </body>

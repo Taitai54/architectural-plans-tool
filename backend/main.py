@@ -257,10 +257,22 @@ class Item(BaseModel):
     status: Literal["pending", "accepted", "rejected"] = "pending"
     source: Literal["user", "ai"] = "user"
     note: str = Field(default="", max_length=500)    # why the assistant proposed it
+    label: str = Field(default="", max_length=200)   # free text the user writes inside the block
     replaces: str = Field(default="", max_length=40)  # id of the item this proposal supersedes when accepted
     x: float = Field(ge=-1e6, le=1e6)      # centre, PDF points
     y: float = Field(ge=-1e6, le=1e6)
     rot: float = Field(ge=-360, le=360)    # degrees, multiples of 90 in the UI
+
+
+class Mark(BaseModel):
+    """Freehand markup drawn over the plan: pen strokes, arrows and text notes."""
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    type: Literal["pen", "arrow", "text"]
+    color: str = Field(default="#dc2626", pattern=r"^#[0-9a-fA-F]{6}$")
+    width: float = Field(default=1, gt=0, le=1000)     # stroke width, PDF points
+    size: float = Field(default=10, gt=0, le=1000)     # text height, PDF points
+    text: str = Field(default="", max_length=500)
+    pts: list[Pt] = Field(min_length=1, max_length=3000)
 
 
 class Measure(BaseModel):
@@ -305,6 +317,7 @@ class PageState(BaseModel):
     rooms: list[Room] = Field(default_factory=list, max_length=200)
     items: list[Item] = Field(default_factory=list, max_length=1000)
     measures: list[Measure] = Field(default_factory=list, max_length=500)
+    marks: list[Mark] = Field(default_factory=list, max_length=2000)
     custom_items: list[CatalogueItem] = Field(default_factory=list, max_length=100)
 
 

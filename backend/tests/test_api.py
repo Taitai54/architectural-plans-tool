@@ -279,3 +279,26 @@ def test_dense_stipple_does_not_make_extraction_quadratic():
     t = time.time()
     near = extract._grid_neighbours(centres, 45.0, cap=6)
     assert time.time() - t < 3 and min(near) >= 6
+
+
+def test_state_item_label_and_marks_roundtrip_and_validation(client):
+    jid = upload(client, plan_pdf()).json()["job_id"]
+    url = f"/api/jobs/{jid}/pages/1/state"
+    state = {
+        "items": [{"id": "i1", "kind": "fridge", "name": "Fridge", "label": "Check door swing", "w": 700, "d": 700, "clear": 900, "x": 50, "y": 40, "rot": 0}],
+        "marks": [
+            {"id": "m1", "type": "pen", "color": "#dc2626", "width": 2, "pts": [{"x": 0, "y": 0}, {"x": 5, "y": 5}]},
+            {"id": "m2", "type": "arrow", "color": "#1d4ed8", "width": 2, "pts": [{"x": 0, "y": 0}, {"x": 20, "y": 0}]},
+            {"id": "m3", "type": "text", "color": "#111827", "size": 12, "text": "Move wall?", "pts": [{"x": 10, "y": 10}]},
+        ],
+    }
+    assert client.put(url, json=state).status_code == 200
+    got = client.get(f"/api/jobs/{jid}/pages/1").json()["state"]
+    assert got["items"][0]["label"] == "Check door swing"
+    assert [m["type"] for m in got["marks"]] == ["pen", "arrow", "text"] and got["marks"][2]["text"] == "Move wall?"
+    # older saved pages have neither field
+    assert client.put(url, json={}).status_code == 200
+    assert client.get(f"/api/jobs/{jid}/pages/1").json()["state"]["marks"] == []
+    for bad_mark in (dict(state["marks"][0], type="spray"), dict(state["marks"][0], color="red"), dict(state["marks"][0], pts=[]), dict(state["marks"][2], text="x" * 501)):
+        assert client.put(url, json=dict(state, marks=[bad_mark])).status_code == 422
+    assert client.put(url, json=dict(state, items=[dict(state["items"][0], label="x" * 201)])).status_code == 422

@@ -15,6 +15,9 @@ Upload an architectural PDF and turn it into structured, classified geometry you
 | Read the drawing | Room names, door tags and the sheet scale are drawn as outlines in CAD PDFs. With the OCR add-on they are read, and a printed "1:50 @ A1" is applied automatically when the page really is that size. |
 | Rooms | Draw a room by clicking its corners. Area, perimeter, furniture and free floor area are calculated at real scale; rename rooms in the sidebar. |
 | Furniture | Catalogue of typical appliances and furniture at true size (editable, plus custom items). Click to place, drag to move, R to rotate, arrow keys to nudge. A dashed zone shows working / door clearance. |
+| Copy, cut, paste | Select a block and press Ctrl+C / Ctrl+X, then Ctrl+V (or the buttons). Pastes step aside from the original; paste into another option or page to reuse a layout. |
+| Text in blocks | Type free text in a block's "Text" field; it is written inside the block (wrapped), and goes into the schedule CSV. |
+| Markup | Pen (B), arrow (A), text (T) and eraser (E) draw over the plan in five colours and three sizes. Click a mark to move, recolour, edit or delete it. Ctrl+Z undoes markup changes, including erasing. |
 | Resize blocks | Select an item and drag the white edge handles (opposite edge stays fixed, sizes snap to 10 mm), or type exact width, depth and clearance. "Save size as preset" adds it to the catalogue. |
 | Review pins | The PDF's own notes are imported as pins (wrapped lines merge into one). Add pins, drag them to the spot they refer to, reply in a thread, resolve or reopen. |
 | Options | Each option is its own set of furniture ("stove left" vs "stove right"). Duplicate an option, rename it, and compare items, furniture area, free area and clashes side by side. |
@@ -24,7 +27,8 @@ Upload an architectural PDF and turn it into structured, classified geometry you
 | Clash checks | Red when an item overlaps a wall, hatched wall band or another item; amber when its front clearance is blocked. |
 | Schedule | Room and furniture schedule as CSV, including option and status. |
 | Saved | Rooms, furniture and measurements are saved automatically per page. |
-| Export | Download the current clean view (including rooms and furniture) as SVG, or the original PDF. |
+| Export | Give the version a name, then download the current view (rooms, furniture, text and markup) as a PNG image or SVG, or the original PDF. |
+| Editable save | "Save editable file" writes a named .json of the page (rooms, furniture, pins, measurements, markup); "Open saved file…" restores it later on the same plan. |
 | Multi-page | Every page is extracted; pick one in the sidebar. |
 | Scans | Detected and shown as a raster preview (automatic extraction for scans is not built yet). |
 
