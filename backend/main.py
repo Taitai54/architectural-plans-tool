@@ -381,6 +381,34 @@ def get_catalogue():
     return CATALOGUE
 
 
+class MyCatalogue(BaseModel):
+    items: list[CatalogueItem] = Field(default_factory=list, max_length=100)
+
+
+def _my_catalogue_path() -> Path:
+    return OUTPUT_DIR / "my-catalogue.json"
+
+
+@app.get("/api/my-catalogue")
+def get_my_catalogue():
+    """The user's own furniture presets. Kept across plans and restarts (not tied to any one job)."""
+    path = _my_catalogue_path()
+    if not path.exists():
+        return {"items": []}
+    try:
+        return MyCatalogue(**read_json(path)).model_dump()
+    except Exception:
+        return {"items": []}
+
+
+@app.put("/api/my-catalogue")
+def put_my_catalogue(body: MyCatalogue):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    with job_lock(OUTPUT_DIR):
+        write_json(_my_catalogue_path(), body.model_dump())
+    return {"ok": True}
+
+
 @app.get("/api/ai/providers")
 def ai_providers():
     return ai.provider_status()      # booleans only: keys are never sent to the browser

@@ -312,3 +312,12 @@ def test_svg_to_pdf_makes_a_vector_page_with_text(client):
     assert doc.page_count == 1 and "Fridge note" in doc[0].get_text()
     assert client.post("/api/svg-to-pdf", content=b"not svg").status_code == 400
     assert client.post("/api/svg-to-pdf", content=b"").status_code == 400
+
+
+def test_my_catalogue_is_kept_and_validated(client):
+    assert client.get("/api/my-catalogue").json() == {"items": []}
+    items = [{"kind": "custom", "name": "Larder unit", "w": 600, "d": 570, "clear": 800}]
+    assert client.put("/api/my-catalogue", json={"items": items}).status_code == 200
+    assert client.get("/api/my-catalogue").json()["items"][0]["name"] == "Larder unit"
+    assert client.put("/api/my-catalogue", json={"items": [dict(items[0], w=-1)]}).status_code == 422
+    assert client.get("/api/my-catalogue").json()["items"][0]["w"] == 600

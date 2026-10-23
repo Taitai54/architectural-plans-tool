@@ -79,6 +79,10 @@
   #stage.marking { cursor: crosshair; }
   #stage.erasing { cursor: none; }
   #mk-textbox { position: absolute; display: none; z-index: 5; border: 1px dashed #1d4ed8; background: rgba(255,255,255,.92); padding: 1px 3px; font-family: Arial, sans-serif; outline: none; min-width: 120px; }
+  .markbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 14px; background: #f4f6ff; border-bottom: 1px solid #dbe4ff; flex-shrink: 0; font-size: 12px; }
+  .markbar[hidden] { display: none; }
+  .markbar strong { margin-right: 4px; color: #1a1a2e; }
+  .markbar .mk-tip { color: #555; margin-left: 8px; }
   .swatches { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
   .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #c8ccd4; cursor: pointer; padding: 0; }
   .swatch.on { box-shadow: 0 0 0 2px #1a1a2e; }
@@ -197,7 +201,7 @@
       <div class="status" id="cat-hint"></div>
       <div class="clip-bar" id="clip-bar"><span id="clip-text" style="flex:1"></span><button class="btn" id="clip-paste">Paste (Ctrl+V)</button></div>
       <div id="catalogue" class="cat-grid"></div>
-      <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Add a custom item</summary>
+      <details style="margin-top:8px" open><summary class="hint" style="cursor:pointer">Add your own item (kept in your catalogue for every plan)</summary>
         <div class="row" style="margin-top:6px"><input class="field" type="text" id="c-name" placeholder="Name" maxlength="60" style="flex:1"></div>
         <div class="row">W <input class="field" type="number" id="c-w" min="1" style="width:68px"> D <input class="field" type="number" id="c-d" min="1" style="width:68px"> Clear <input class="field" type="number" id="c-c" min="0" value="0" style="width:62px"> mm</div>
         <div class="btns" style="margin-top:4px"><button class="btn" id="c-add">Add to catalogue</button></div>
@@ -226,16 +230,7 @@
 
     <div class="sec" id="sec-markup" hidden>
       <h2>9 · Markup &amp; notes</h2>
-      <div class="btns" style="margin-top:0">
-        <button class="btn" id="mk-pen" title="Draw freehand (B)">✎ Pen (B)</button>
-        <button class="btn" id="mk-arrow" title="Drag from the tail to the point (A)">➚ Arrow (A)</button>
-        <button class="btn" id="mk-text" title="Click on the plan and type (T)">T Text (T)</button>
-        <button class="btn" id="mk-erase" title="Drag over markup to rub it out (E)">⌫ Eraser (E)</button>
-        <button class="btn" id="mk-undo" title="Undo the last markup change (Ctrl+Z)">↶ Undo</button>
-      </div>
-      <div class="swatches" id="mk-colors"></div>
-      <div class="chips" id="mk-sizes" style="margin-top:8px"></div>
-      <div class="hint" id="mk-hint">Pick a tool, then draw on the plan. Without a tool, click a mark to select, move or edit it. The eraser removes pen, arrow and text marks only; furniture is removed with Delete.</div>
+      <div class="hint" id="mk-hint">The drawing tools are in the bar above the plan: Pen, Arrow, Text and Eraser. With no tool chosen, click a mark to select, move or edit it. The eraser removes pen, arrow and text marks only; furniture is removed with Delete.</div>
       <div id="mk-selected"></div>
     </div>
 
@@ -257,6 +252,18 @@
       <button class="btn" id="zoom-in">＋</button>
       <button class="btn" id="zoom-out">－</button>
       <button class="btn" id="fit">Fit (F)</button>
+    </div>
+    <div class="markbar" id="markbar" hidden>
+      <strong>Draw &amp; annotate</strong>
+      <button class="btn" id="mk-select" title="Stop drawing; click marks and furniture to select them (Esc)">↖ Select</button>
+      <button class="btn" id="mk-pen" title="Draw freehand (B)">✎ Pen</button>
+      <button class="btn" id="mk-arrow" title="Drag from the tail to the point (A)">➚ Arrow</button>
+      <button class="btn" id="mk-text" title="Click on the plan and type (T)">T Text</button>
+      <button class="btn" id="mk-erase" title="Drag over markup to rub it out (E)">⌫ Eraser</button>
+      <button class="btn" id="mk-undo" title="Undo the last markup change (Ctrl+Z)">↶ Undo</button>
+      <span class="swatches" id="mk-colors" style="margin:0 0 0 6px"></span>
+      <span class="chips" id="mk-sizes" style="margin:0 0 0 6px"></span>
+      <span class="mk-tip" id="mk-tip">Pick a tool, then click or drag on the plan.</span>
     </div>
     <div class="banner" id="banner"></div>
     <div id="stage">
@@ -317,6 +324,7 @@ const MARK_MODES = ['pen', 'arrow', 'text', 'erase'];
 const MK_COLORS = ['#dc2626', '#1d4ed8', '#059669', '#d97706', '#111827'];
 const MK_SIZES = [{ name: 'Fine', px: 2, text: 12 }, { name: 'Medium', px: 4, text: 16 }, { name: 'Bold', px: 7, text: 24 }];
 const ERASE_PX = 10;
+const MK_TIPS = { pen: 'Pen: press and drag on the plan to draw.', arrow: 'Arrow: press at the tail and drag to the point.', text: 'Text: click where the text should go, type, press Enter.', erase: 'Eraser: drag over drawings, arrows or text to rub them out.', none: 'Pick a tool, then click or drag on the plan. Click a mark to move or edit it.' };
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function el(name, attrs = {}, text) {
@@ -405,10 +413,29 @@ async function upload(file) {
 $('page-select').onchange = e => loadPage(+e.target.value);
 
 let loadSeq = 0;
+// The user's own catalogue entries are kept on the server, not per plan, so they are there every time the tool opens.
+const sameItem = (a, b) => a.name === b.name && a.w === b.w && a.d === b.d && a.clear === b.clear;
+function mergeCustom(list) {
+  let added = false;
+  for (const c of list) if (!st.customItems.some(x => sameItem(x, c))) { st.customItems.push({ kind: 'custom', name: c.name, w: c.w, d: c.d, clear: c.clear }); added = true; }
+  if (added) saveMyCatalogue();
+  return added;
+}
+let myCatLoaded = false;
+async function saveMyCatalogue() {
+  if (!myCatLoaded) return;      // never overwrite the saved list before it has been read
+  try { await api('/api/my-catalogue', jsonPut({ items: st.customItems.map(c => ({ kind: c.kind || 'custom', name: c.name, w: clampNum(c.w, 1, 50000), d: clampNum(c.d, 1, 50000), clear: clampNum(c.clear, 0, 10000) })) })); }
+  catch (e) { status('upload-status', 'error', 'Could not save your catalogue: ' + e.message); }
+}
+function addCustom(c) {
+  if (st.customItems.some(x => sameItem(x, c))) return false;
+  st.customItems.push({ kind: 'custom', name: c.name, w: c.w, d: c.d, clear: c.clear });
+  saveMyCatalogue(); renderCatalogue(); return true;
+}
 function applyState(sv) {
   st.rooms = (sv.rooms || []).map(r => ({ id: r.id, name: r.name, poly: r.poly.map(p => [p.x, p.y]) }));
   st.items = (sv.items || []).map(i => ({ ...i }));
-  st.customItems = (sv.custom_items || []).map(i => ({ ...i }));
+  mergeCustom(sv.custom_items || []);
   st.measures = (sv.measures || []).map(m => ({ a: [m.a.x, m.a.y], b: [m.b.x, m.b.y], view: null }));
   for (const m of st.measures) m.view = viewAt(m.a[0], m.a[1]);
   st.options = (sv.options || []).map(o => ({ ...o }));
@@ -707,6 +734,7 @@ function renderSidebar() {
   const sc = st.scene;
   for (const id of ['sec-views', 'sec-layers', 'sec-scale', 'sec-rooms', 'sec-furn', 'sec-options', 'sec-review', 'sec-markup', 'sec-export']) $(id).hidden = false;
   $('sec-views').hidden = sc.views.length === 0;
+  $('markbar').hidden = false;
   renderScaleChips();
 
   const vwrap = $('views'); vwrap.textContent = '';
@@ -876,6 +904,8 @@ function setMode(m) {
   stage.classList.toggle('erasing', m === 'erase');
   cancelText();
   for (const t of MARK_MODES) $('mk-' + t).classList.toggle('on', m === t);
+  $('mk-select').classList.toggle('on', !m);
+  $('mk-tip').textContent = MK_TIPS[m] || (m ? 'Press Esc to go back to selecting.' : MK_TIPS.none);
   if (MARK_MODES.includes(m)) { selectItem(null); selectMark(null); }
   $('btn-measure').classList.toggle('on', m === 'measure');
   $('btn-calibrate').classList.toggle('on', m === 'calibrate');
@@ -1229,7 +1259,7 @@ function renderCatalogue() {
     };
     if (c.custom) {
       const rm = document.createElement('span'); rm.textContent = ' ✕'; rm.title = 'Remove this custom preset'; rm.style.cssText = 'float:right;color:#999;cursor:pointer';
-      rm.onclick = e => { e.stopPropagation(); st.customItems = st.customItems.filter(x => x !== st.customItems.find(y => y.name === c.name && y.w === c.w)); scheduleSave(); renderCatalogue(); };
+      rm.onclick = e => { e.stopPropagation(); st.customItems = st.customItems.filter(x => !sameItem(x, c)); saveMyCatalogue(); renderCatalogue(); };
       b.appendChild(rm);
     }
     w.appendChild(b);
@@ -1256,7 +1286,7 @@ function centreOfView() { const v = viewData(st.activeView) || st.scene.views[0]
 $('c-add').onclick = () => {
   const name = $('c-name').value.trim(), w = parseFloat($('c-w').value), d = parseFloat($('c-d').value), clear = parseFloat($('c-c').value) || 0;
   if (!name || !(w > 0) || !(d > 0)) return;
-  st.customItems.push({ kind: 'custom', name, w, d, clear }); scheduleSave(); renderCatalogue();
+  addCustom({ name, w, d, clear });
   $('c-name').value = ''; $('c-w').value = ''; $('c-d').value = '';
 };
 
@@ -1297,7 +1327,7 @@ function renderSelected() {
   r1.append(btn('Accept ✓', setStatus('accepted')), btn('Reject ✕', setStatus('rejected')), btn('Reset', setStatus('pending')));
   const r2 = document.createElement('div'); r2.className = 'btns';
   r2.append(btn('Rotate 90° (R)', rotateSelected), btn('Copy (Ctrl+C)', () => copySelected(false)), btn('Cut (Ctrl+X)', () => copySelected(true)), btn('Delete', deleteSelected),
-    btn('Save size as preset', () => { st.customItems.push({ kind: 'custom', name: it.name, w: Math.round(it.w), d: Math.round(it.d), clear: Math.round(it.clear) }); scheduleSave(); renderCatalogue(); }));
+    btn('Save to my catalogue', () => { const ok = addCustom({ name: it.name, w: Math.round(it.w), d: Math.round(it.d), clear: Math.round(it.clear) }); const h = $('cat-hint'); h.className = 'status success'; h.textContent = ok ? `${it.name} added to your catalogue. It will be there every time you open the tool.` : `${it.name} at this size is already in your catalogue.`; }));
   wrap.append(r1, r2);
   box.appendChild(wrap);
 }
@@ -1628,6 +1658,13 @@ async function initAi() {
     if (st.scene) renderCatalogue();
   } catch (e) { status('upload-status', 'error', 'Could not load the catalogue: ' + e.message); }
   try {
+    const mine = await api('/api/my-catalogue');
+    myCatLoaded = true;
+    for (const c of mine.items) if (!st.customItems.some(x => sameItem(x, c))) st.customItems.push(c);
+    if (st.customItems.length > mine.items.length) saveMyCatalogue();      // presets that came from a plan opened before this loaded
+    if (st.scene) renderCatalogue();
+  } catch (e) { status('upload-status', 'error', 'Could not load your catalogue: ' + e.message); }
+  try {
     chat.providers = await api('/api/ai/providers');
     const sel = $('ai-provider'); sel.textContent = '';
     for (const p of chat.providers) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.label.split(' (')[0] + (p.configured ? '' : ' (no key)'); sel.appendChild(o); }
@@ -1905,6 +1942,7 @@ function renderMarkPanel() {
 }
 for (const [id, mode] of [['mk-pen', 'pen'], ['mk-arrow', 'arrow'], ['mk-text', 'text'], ['mk-erase', 'erase']]) $(id).onclick = () => setMode(st.mode === mode ? null : mode);
 $('mk-undo').onclick = undoMark;
+$('mk-select').onclick = () => setMode(null);
 
 // ── copy, cut and paste furniture ──────────────────────────────────────────
 function copySelected(cut) {
