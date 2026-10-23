@@ -65,6 +65,8 @@ async def security_headers(request: Request, call_next):
         if request.url.path.endswith("/state") and int(request.headers.get("content-length") or 0) > MAX_STATE_BYTES:
             return JSONResponse({"detail": "Project data is too large"}, status_code=413)
     resp = await call_next(request)
+    if request.method == "GET" and not request.url.path.startswith("/api/jobs/"):
+        resp.headers["Cache-Control"] = "no-cache"      # the page and /api/version are always re-checked, so an update shows straight away
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "no-referrer"
     return resp
@@ -374,6 +376,14 @@ def validate_ops(ops: list[dict]) -> tuple[list[dict], int]:
         except Exception:
             dropped += 1
     return good, dropped
+
+
+APP_VERSION = "2026-10-23 · markup, PDF export, my catalogue"
+
+
+@app.get("/api/version")
+def get_version():
+    return {"version": APP_VERSION, "folder": str(Path(__file__).resolve().parent.parent)}
 
 
 @app.get("/api/catalogue")
