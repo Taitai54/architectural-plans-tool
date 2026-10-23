@@ -143,6 +143,7 @@
       </div>
       <input type="file" id="file-input" accept=".pdf,application/pdf">
       <div class="status" id="upload-status"></div>
+      <div class="btns" style="margin-top:6px"><button class="btn" id="open-file-top">Or reopen a saved file…</button></div>
     </div>
 
     <div class="sec" id="sec-pages" hidden>
@@ -242,11 +243,11 @@
       <h2>10 · Export &amp; save</h2>
       <div class="hint" style="margin-top:0">Name this version, then save an image to share or an editable file to reopen later.</div>
       <div class="row"><input class="field" type="text" id="ver-name" maxlength="60" placeholder="Version name, e.g. Kitchen v2 – client comments" style="flex:1"></div>
-      <div class="btns" style="margin-top:4px"><button class="btn primary" id="dl-png">Download image (PNG)</button><button class="btn" id="dl-svg">Clean SVG</button><button class="btn" id="dl-pdf">Original PDF</button></div>
-      <div class="btns"><button class="btn primary" id="save-file">Save editable file</button><button class="btn" id="open-file">Open saved file…</button></div>
+      <div class="btns" style="margin-top:4px"><button class="btn primary" id="dl-png">Image (PNG)</button><button class="btn primary" id="dl-markup-pdf">PDF</button><button class="btn" id="dl-svg">SVG</button><button class="btn" id="dl-pdf" title="The PDF you uploaded, unchanged">Original PDF</button></div>
+      <div class="btns"><button class="btn primary" id="save-file">Save to edit later</button><button class="btn" id="open-file">Reopen saved file…</button></div>
       <input type="file" id="open-input" accept=".json,application/json" style="display:none">
       <div class="status" id="file-status"></div>
-      <div class="hint">The editable file keeps the rooms, furniture, labels, pins, measurements and markup of this page. Open it later on the same plan to carry on.</div>
+      <div class="hint">The saved file contains the plan itself plus your rooms, furniture, text, pins, measurements and markup, so you can reopen it on its own (also from step 1 at the top) and carry on.</div>
     </div>
   </div>
 
@@ -2103,6 +2104,24 @@ window.addEventListener('resize', () => { if (st.scene) applyView(); });
 
 // ── export ─────────────────────────────────────────────────────────────────
 $('dl-pdf').onclick = () => { if (st.jobId) location.href = `/api/jobs/${st.jobId}/original.pdf`; };
+// PDF converters ignore rgba() colours and paint-order, which turned translucent blocks black and hid text under its outline.
+function plainColours(root) {
+  const hex = n => Math.round(+n).toString(16).padStart(2, '0');
+  const rgba = /^rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/;
+  for (const e of root.querySelectorAll('*')) {
+    for (const a of ['fill', 'stroke']) {
+      const m = rgba.exec(e.getAttribute(a) || '');
+      if (m) { e.setAttribute(a, '#' + hex(m[1]) + hex(m[2]) + hex(m[3])); e.setAttribute(a + '-opacity', (+m[4] * +(e.getAttribute(a + '-opacity') || 1)).toString()); }
+    }
+  }
+  for (const t of [...root.querySelectorAll('text[paint-order]')]) {       // outline first, then the text on top
+    const halo = t.cloneNode(true);
+    halo.removeAttribute('paint-order'); halo.setAttribute('fill', t.getAttribute('stroke') || '#fff');
+    t.removeAttribute('paint-order'); t.removeAttribute('stroke'); t.removeAttribute('stroke-width');
+    halo.setAttribute('stroke-linejoin', 'round');
+    t.parentNode.insertBefore(halo, t);
+  }
+}
 function buildExportSvg(scale) {
   const b = visibleBox(), pad = 20;
   const clone = world.cloneNode(true);
@@ -2123,6 +2142,7 @@ function buildExportSvg(scale) {
     ov.appendChild(el('text', { x: (m.a[0] + m.b[0]) / 2, y: (m.a[1] + m.b[1]) / 2 - 3, 'font-size': 9, 'text-anchor': 'middle', fill: '#cc0000', 'font-family': 'Arial,sans-serif' }, lengthLabel(m.a, m.b, m.view)));
   }
   out.appendChild(ov);
+  plainColours(ov);
   return { svg: out, w, h };
 }
 // File names carry the plan, page, version name and date, so saved versions can be told apart.
@@ -2142,6 +2162,17 @@ function download(blob, name) {
 $('dl-svg').onclick = () => {
   if (!st.scene) return;
   download(new Blob([new XMLSerializer().serializeToString(buildExportSvg().svg)], { type: 'image/svg+xml' }), exportName('.svg', 'clean'));
+};
+$('dl-markup-pdf').onclick = async () => {
+  if (!st.scene) return;
+  try {
+    status('file-status', 'loading', 'Making the PDF…', true);
+    const { svg: out } = buildExportSvg(1);       // 1 unit = 1 PDF point, so the page keeps the sheet's size
+    const res = await fetch('/api/svg-to-pdf', { method: 'POST', headers: { 'Content-Type': 'image/svg+xml' }, body: new XMLSerializer().serializeToString(out) });
+    if (!res.ok) { let d = null; try { d = (await res.json()).detail; } catch (_) {} throw new Error(d || `Request failed (${res.status})`); }
+    download(await res.blob(), exportName('.pdf', 'markup'));
+    status('file-status', 'success', 'PDF downloaded.');
+  } catch (e) { status('file-status', 'error', 'Could not make the PDF: ' + e.message); }
 };
 $('dl-png').onclick = async () => {
   if (!st.scene) return;
@@ -2163,31 +2194,48 @@ $('dl-png').onclick = async () => {
 
 // ── editable save file ─────────────────────────────────────────────────────
 const FILE_FORMAT = 'architectural-plans-tool/page-state';
+const blobToB64 = blob => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = () => no(r.error); r.readAsDataURL(blob); });
 $('save-file').onclick = async () => {
   if (!st.scene) return;
-  const file = { format: FILE_FORMAT, version: 1, name: $('ver-name').value.trim(), saved: new Date().toISOString(), source_file: st.filename, page: st.page, state: statePayload() };
-  const name = exportName('.json', 'markup');
-  download(new Blob([JSON.stringify(file, null, 1)], { type: 'application/json' }), name);
-  status('file-status', 'success', `Saved ${name}. Use "Open saved file…" to carry on from it.`);
+  try {
+    status('file-status', 'loading', 'Saving…', true);
+    const pdf = await (await fetch(`/api/jobs/${st.jobId}/original.pdf`)).blob();
+    const file = { format: FILE_FORMAT, version: 2, name: $('ver-name').value.trim(), saved: new Date().toISOString(), source_file: st.filename, page: st.page, pdf_b64: await blobToB64(pdf), state: statePayload() };
+    const name = exportName('.json', 'saved');
+    download(new Blob([JSON.stringify(file)], { type: 'application/json' }), name);
+    status('file-status', 'success', `Saved ${name}. Reopen it any time to carry on.`);
+  } catch (e) { status('file-status', 'error', 'Could not save: ' + e.message); }
 };
-$('open-file').onclick = () => { if (st.scene) $('open-input').click(); };
+const openPicker = () => $('open-input').click();
+$('open-file').onclick = openPicker; $('open-file-top').onclick = openPicker;
 $('open-input').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
-  if (!f || !st.scene) return;
+  if (!f) return;
+  const out = st.scene ? 'file-status' : 'upload-status';
   try {
     let file;
     try { file = JSON.parse(await f.text()); } catch (_) { throw new Error('that is not a saved file from this tool'); }
     if (!file || file.format !== FILE_FORMAT || !file.state) throw new Error('that is not a saved file from this tool');
-    const from = `"${file.name || 'unnamed'}" (${file.source_file || 'unknown plan'}, page ${file.page}${file.saved ? ', saved ' + new Date(file.saved).toLocaleString() : ''})`;
-    const other = file.source_file && file.source_file !== st.filename ? `\n\nWarning: it was saved from ${file.source_file}, but you have ${st.filename} open.` : '';
-    if (!confirm(`Replace everything on this page (rooms, furniture, pins, measurements and markup) with ${from}?${other}`)) return;
+    const from = `"${file.name || 'unnamed'}" (${file.source_file || 'plan'}, page ${file.page}${file.saved ? ', saved ' + new Date(file.saved).toLocaleString() : ''})`;
+    const samePlan = st.scene && file.source_file === st.filename;
+    if (st.scene && !confirm(samePlan ? `Replace the rooms, furniture, pins, measurements and markup on this page with ${from}?` : `Close ${st.filename} and open ${from}?`)) return;
+    if (!samePlan) {
+      if (!file.pdf_b64) throw new Error(`this file does not contain the plan; open ${file.source_file || 'the plan'} first, then reopen it`);
+      const bin = atob(file.pdf_b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      await upload(new File([bytes], file.source_file || 'plan.pdf', { type: 'application/pdf' }));
+      if (!st.scene) return;
+    }
+    const pg = Math.max(1, Math.floor(+file.page) || 1);
+    if (pg !== st.page && st.pages.some(p => p.page === pg)) { $('page-select').value = pg; await loadPage(pg); }
     await flushSave();
     await api(`/api/jobs/${st.jobId}/pages/${st.page}/state`, jsonPut(file.state));      // the server checks the file before anything changes on screen
     applyState(file.state);
     st.selected = null; st.selMark = null; st.markUndo = []; st.candidates = []; setMode(null);
     renderCandidates(); renderSidebar(); renderOverlay();
     status('file-status', 'success', `Opened ${from}.`);
-  } catch (err) { status('file-status', 'error', 'Could not open the file: ' + err.message); }
+    status('upload-status', 'success', `Loaded ${st.filename}`);
+  } catch (err) { status(st.scene ? 'file-status' : out, 'error', 'Could not open the file: ' + err.message); }
 };
 </script>
 </body>

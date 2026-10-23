@@ -302,3 +302,13 @@ def test_state_item_label_and_marks_roundtrip_and_validation(client):
     for bad_mark in (dict(state["marks"][0], type="spray"), dict(state["marks"][0], color="red"), dict(state["marks"][0], pts=[]), dict(state["marks"][2], text="x" * 501)):
         assert client.put(url, json=dict(state, marks=[bad_mark])).status_code == 422
     assert client.put(url, json=dict(state, items=[dict(state["items"][0], label="x" * 201)])).status_code == 422
+
+
+def test_svg_to_pdf_makes_a_vector_page_with_text(client):
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100"><path d="M10 10L190 90" stroke="red"/><text x="20" y="50" font-size="12">Fridge note</text></svg>'
+    r = client.post("/api/svg-to-pdf", content=svg, headers={"content-type": "image/svg+xml"})
+    assert r.status_code == 200 and r.content.startswith(b"%PDF")
+    doc = pymupdf.open(stream=r.content, filetype="pdf")
+    assert doc.page_count == 1 and "Fridge note" in doc[0].get_text()
+    assert client.post("/api/svg-to-pdf", content=b"not svg").status_code == 400
+    assert client.post("/api/svg-to-pdf", content=b"").status_code == 400

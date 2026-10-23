@@ -14,6 +14,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
@@ -472,6 +473,27 @@ def get_original(job_id: str):
     d = job_dir(job_id)
     return FileResponse(d / "original.pdf", media_type="application/pdf",
                         headers={"Content-Disposition": "attachment; filename=original.pdf"})
+
+
+MAX_SVG_BYTES = 40_000_000
+
+
+@app.post("/api/svg-to-pdf")
+async def svg_to_pdf(request: Request):
+    """Turn the exported view (an SVG the browser built) into a vector PDF, one page the size of the drawing."""
+    body = await request.body()
+    if not body or len(body) > MAX_SVG_BYTES:
+        raise HTTPException(413 if body else 400, "The drawing is too large to export" if body else "Nothing to export")
+
+    def convert() -> bytes:
+        with pymupdf.open(stream=body, filetype="svg") as svg:
+            return svg.convert_to_pdf()
+
+    try:
+        pdf = await run_in_threadpool(convert)
+    except Exception:
+        raise HTTPException(400, "Could not turn the drawing into a PDF")
+    return Response(pdf, media_type="application/pdf")
 
 
 @app.get("/api/jobs/{job_id}/pages/{page}/preview.png")

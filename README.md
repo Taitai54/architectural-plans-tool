@@ -27,8 +27,8 @@ Upload an architectural PDF and turn it into structured, classified geometry you
 | Clash checks | Red when an item overlaps a wall, hatched wall band or another item; amber when its front clearance is blocked. |
 | Schedule | Room and furniture schedule as CSV, including option and status. |
 | Saved | Rooms, furniture and measurements are saved automatically per page. |
-| Export | Give the version a name, then download the current view (rooms, furniture, text and markup) as a PNG image or SVG, or the original PDF. |
-| Editable save | "Save editable file" writes a named .json of the page (rooms, furniture, pins, measurements, markup); "Open saved file…" restores it later on the same plan. |
+| Export | Give the version a name, then download the current view (rooms, furniture, text and markup) as a PDF, PNG image or SVG, or the original PDF. |
+| Save to edit later | "Save to edit later" writes one named .json containing the plan and everything you added (rooms, furniture, pins, measurements, markup). "Reopen saved file…" (also at the top, step 1) restores it on its own, with nothing else needed. |
 | Multi-page | Every page is extracted; pick one in the sidebar. |
 | Scans | Detected and shown as a raster preview (automatic extraction for scans is not built yet). |
 
