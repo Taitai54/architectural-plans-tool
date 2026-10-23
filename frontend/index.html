@@ -135,6 +135,7 @@
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>
   <h1>Architectural Plans Tool</h1>
   <span>Upload · Declutter · Measure</span>
+  <span id="app-version" style="margin-left:auto;font-size:11px;opacity:.7" title="The version of the tool this page came from">version: loading…</span>
 </header>
 
 <div class="main">
@@ -1653,6 +1654,8 @@ function updateAiHint() {
     : !p.configured ? `Not configured: add the API key to backend/.env and restart.` : !p.sdk_installed ? 'SDK missing: pip install -r backend/requirements-ai.txt' : `Using ${p.label}. Proposals appear as pending items marked ✦.`;
 }
 async function initAi() {
+  try { const v = await api('/api/version'); $('app-version').textContent = 'version: ' + v.version; $('app-version').title = 'Running from ' + v.folder; }
+  catch (_) { $('app-version').textContent = 'version: old (restart run.bat)'; }
   try {
     CATALOGUE = await api('/api/catalogue');
     if (st.scene) renderCatalogue();
