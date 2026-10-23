@@ -14,6 +14,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
@@ -257,10 +258,22 @@ class Item(BaseModel):
     status: Literal["pending", "accepted", "rejected"] = "pending"
     source: Literal["user", "ai"] = "user"
     note: str = Field(default="", max_length=500)    # why the assistant proposed it
+    label: str = Field(default="", max_length=200)   # free text the user writes inside the block
     replaces: str = Field(default="", max_length=40)  # id of the item this proposal supersedes when accepted
     x: float = Field(ge=-1e6, le=1e6)      # centre, PDF points
     y: float = Field(ge=-1e6, le=1e6)
     rot: float = Field(ge=-360, le=360)    # degrees, multiples of 90 in the UI
+
+
+class Mark(BaseModel):
+    """Freehand markup drawn over the plan: pen strokes, arrows and text notes."""
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    type: Literal["pen", "arrow", "text"]
+    color: str = Field(default="#dc2626", pattern=r"^#[0-9a-fA-F]{6}$")
+    width: float = Field(default=1, gt=0, le=1000)     # stroke width, PDF points
+    size: float = Field(default=10, gt=0, le=1000)     # text height, PDF points
+    text: str = Field(default="", max_length=500)
+    pts: list[Pt] = Field(min_length=1, max_length=3000)
 
 
 class Measure(BaseModel):
@@ -305,6 +318,7 @@ class PageState(BaseModel):
     rooms: list[Room] = Field(default_factory=list, max_length=200)
     items: list[Item] = Field(default_factory=list, max_length=1000)
     measures: list[Measure] = Field(default_factory=list, max_length=500)
+    marks: list[Mark] = Field(default_factory=list, max_length=2000)
     custom_items: list[CatalogueItem] = Field(default_factory=list, max_length=100)
 
 
@@ -365,6 +379,34 @@ def validate_ops(ops: list[dict]) -> tuple[list[dict], int]:
 @app.get("/api/catalogue")
 def get_catalogue():
     return CATALOGUE
+
+
+class MyCatalogue(BaseModel):
+    items: list[CatalogueItem] = Field(default_factory=list, max_length=100)
+
+
+def _my_catalogue_path() -> Path:
+    return OUTPUT_DIR / "my-catalogue.json"
+
+
+@app.get("/api/my-catalogue")
+def get_my_catalogue():
+    """The user's own furniture presets. Kept across plans and restarts (not tied to any one job)."""
+    path = _my_catalogue_path()
+    if not path.exists():
+        return {"items": []}
+    try:
+        return MyCatalogue(**read_json(path)).model_dump()
+    except Exception:
+        return {"items": []}
+
+
+@app.put("/api/my-catalogue")
+def put_my_catalogue(body: MyCatalogue):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    with job_lock(OUTPUT_DIR):
+        write_json(_my_catalogue_path(), body.model_dump())
+    return {"ok": True}
 
 
 @app.get("/api/ai/providers")
@@ -459,6 +501,27 @@ def get_original(job_id: str):
     d = job_dir(job_id)
     return FileResponse(d / "original.pdf", media_type="application/pdf",
                         headers={"Content-Disposition": "attachment; filename=original.pdf"})
+
+
+MAX_SVG_BYTES = 40_000_000
+
+
+@app.post("/api/svg-to-pdf")
+async def svg_to_pdf(request: Request):
+    """Turn the exported view (an SVG the browser built) into a vector PDF, one page the size of the drawing."""
+    body = await request.body()
+    if not body or len(body) > MAX_SVG_BYTES:
+        raise HTTPException(413 if body else 400, "The drawing is too large to export" if body else "Nothing to export")
+
+    def convert() -> bytes:
+        with pymupdf.open(stream=body, filetype="svg") as svg:
+            return svg.convert_to_pdf()
+
+    try:
+        pdf = await run_in_threadpool(convert)
+    except Exception:
+        raise HTTPException(400, "Could not turn the drawing into a PDF")
+    return Response(pdf, media_type="application/pdf")
 
 
 @app.get("/api/jobs/{job_id}/pages/{page}/preview.png")
