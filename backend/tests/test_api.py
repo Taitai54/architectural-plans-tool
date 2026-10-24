@@ -321,3 +321,11 @@ def test_my_catalogue_is_kept_and_validated(client):
     assert client.get("/api/my-catalogue").json()["items"][0]["name"] == "Larder unit"
     assert client.put("/api/my-catalogue", json={"items": [dict(items[0], w=-1)]}).status_code == 422
     assert client.get("/api/my-catalogue").json()["items"][0]["w"] == 600
+
+
+def test_white_out_mark_is_accepted(client):
+    jid = upload(client, plan_pdf()).json()["job_id"]
+    url = f"/api/jobs/{jid}/pages/1/state"
+    mask = {"id": "w1", "type": "mask", "color": "#ffffff", "width": 1, "pts": [{"x": 10, "y": 10}, {"x": 90, "y": 40}]}
+    assert client.put(url, json={"marks": [mask]}).status_code == 200
+    assert client.get(f"/api/jobs/{jid}/pages/1").json()["state"]["marks"][0]["type"] == "mask"

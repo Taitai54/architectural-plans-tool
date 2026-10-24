@@ -263,6 +263,7 @@
       <button class="btn" id="mk-arrow" title="Drag from the tail to the point (A)">➚ Arrow</button>
       <button class="btn" id="mk-text" title="Click on the plan and type (T)">T Text</button>
       <button class="btn" id="mk-erase" title="Drag over markup to rub it out (E)">⌫ Eraser</button>
+      <button class="btn" id="mk-white" title="Drag a box to paint over lines of the PDF itself (W). The PDF is not changed; delete the box to bring the lines back.">▯ White-out</button>
       <button class="btn" id="mk-undo" title="Undo the last markup change (Ctrl+Z)">↶ Undo</button>
       <span class="swatches" id="mk-colors" style="margin:0 0 0 6px"></span>
       <span class="chips" id="mk-sizes" style="margin:0 0 0 6px"></span>
@@ -324,12 +325,12 @@ const st = {
   selMark: null, mkColor: '#dc2626', mkSize: 1, markUndo: [],
   clip: null, pasteN: 0, // copied furniture item
 };
-const MARK_MODES = ['pen', 'arrow', 'text', 'erase'];
+const MARK_MODES = ['pen', 'arrow', 'text', 'erase', 'white'];
 const TOOL_MODES = MARK_MODES.concat('box');
 const MK_COLORS = ['#dc2626', '#1d4ed8', '#059669', '#d97706', '#111827'];
 const MK_SIZES = [{ name: 'Fine', px: 2, text: 12 }, { name: 'Medium', px: 4, text: 16 }, { name: 'Bold', px: 7, text: 24 }];
 const ERASE_PX = 10;
-const MK_TIPS = { pen: 'Pen: press and drag on the plan to draw.', arrow: 'Arrow: press at the tail and drag to the point.', text: 'Text: click where the text should go, type, press Enter.', erase: 'Eraser: drag over drawings, arrows or text to rub them out.', box: 'Box select: drag a rectangle around the pins, drawings, text or furniture you want. Then drag them or press Delete.', none: 'Select: click a pin, drawing, text or furniture, then drag it or press Delete. Drag empty space to pan.' };
+const MK_TIPS = { pen: 'Pen: press and drag on the plan to draw.', arrow: 'Arrow: press at the tail and drag to the point.', text: 'Text: click where the text should go, type, press Enter.', erase: 'Eraser: drag over drawings, arrows or text to rub them out.', white: 'White-out: drag a box over lines of the PDF you want hidden. Delete the box (Select, click its edge, Delete) to bring them back.', box: 'Box select: drag a rectangle around the pins, drawings, text or furniture you want. Then drag them or press Delete.', none: 'Select: click a pin, drawing, text or furniture, then drag it or press Delete. Drag empty space to pan.' };
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function el(name, attrs = {}, text) {
@@ -441,7 +442,7 @@ function applyState(sv) {
   st.rooms = (sv.rooms || []).map(r => ({ id: r.id, name: r.name, poly: r.poly.map(p => [p.x, p.y]) }));
   st.items = (sv.items || []).map(i => ({ ...i }));
   mergeCustom(sv.custom_items || []);
-  st.measures = (sv.measures || []).map(m => ({ a: [m.a.x, m.a.y], b: [m.b.x, m.b.y], view: null }));
+  st.measures = (sv.measures || []).map(m => ({ id: uid(), a: [m.a.x, m.a.y], b: [m.b.x, m.b.y], view: null }));
   for (const m of st.measures) m.view = viewAt(m.a[0], m.a[1]);
   st.options = (sv.options || []).map(o => ({ ...o }));
   if (!st.options.length) st.options = [{ id: 'o1', name: 'Option A' }];
@@ -959,7 +960,8 @@ function renderOverlay() {
   renderDeleteBtn();
   const k = st.view.k, fs = 12 / k;
   buildExtras(overlay, k);
-  const draw = (a, b, color, label) => {
+  const draw = (a, b, color, label, sel) => {
+    if (sel) overlay.appendChild(el('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: '#1d4ed8', 'stroke-opacity': 0.35, 'stroke-width': 8, 'stroke-linecap': 'round', 'vector-effect': 'non-scaling-stroke' }));
     overlay.appendChild(el('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: color, 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
     for (const p of [a, b]) overlay.appendChild(el('circle', { cx: p[0], cy: p[1], r: 3.5 / k, fill: color }));
     if (label) {
@@ -974,7 +976,7 @@ function renderOverlay() {
     overlay.appendChild(el('polyline', { points: pts.map(q => q.join(',')).join(' '), fill: 'none', stroke: '#059669', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
     for (const q of st.roomPts) overlay.appendChild(el('circle', { cx: q[0], cy: q[1], r: 3.5 / k, fill: '#059669' }));
   }
-  for (const m of st.measures) draw(m.a, m.b, '#cc0000', lengthLabel(m.a, m.b, m.view));
+  for (const m of st.measures) draw(m.a, m.b, '#cc0000', lengthLabel(m.a, m.b, m.view), inGroup('measures', m.id));
   if (st.calib) draw(st.calib.a, st.calib.b, '#0a7d3b', 'calibration line');
   if (st.pending.length === 1) {
     const a = st.pending[0], b = st.hover;
@@ -1001,7 +1003,7 @@ function onPick(p) {
   const [a, b] = st.pending; st.pending = [];
   if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.5) return renderOverlay();      // same point twice
   const view = viewAt(a[0], a[1]);
-  if (st.mode === 'measure') { st.measures.push({ a, b, view }); renderMeasures(); scheduleSave(); }
+  if (st.mode === 'measure') { st.measures.push({ id: uid(), a, b, view }); renderMeasures(); scheduleSave(); }
   else if (st.mode === 'calibrate') { st.calib = { a, b, view }; $('calib-form').hidden = false; $('calib-len').focus(); }
   renderOverlay();
 }
@@ -1188,8 +1190,10 @@ function drawPins(g, k) {
 }
 function buildExtras(g, k) {
   const fs = 11 / k;
+  drawMasks(g, k);
   for (const r of st.rooms) {
-    g.appendChild(el('polygon', { points: r.poly.map(q => q.join(',')).join(' '), fill: 'rgba(5,150,105,.09)', stroke: '#059669', 'stroke-width': 1.2, 'stroke-dasharray': '6 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
+    const rsel = g === overlay && inGroup('rooms', r.id);
+    g.appendChild(el('polygon', { points: r.poly.map(q => q.join(',')).join(' '), fill: rsel ? 'rgba(29,78,216,.15)' : 'rgba(5,150,105,.09)', stroke: rsel ? '#1d4ed8' : '#059669', 'stroke-width': rsel ? 3 : 1.2, 'stroke-dasharray': '6 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
     const c = centroid(r.poly), m = roomMetrics(r);
     g.appendChild(haloText(c[0], c[1] - fs * 0.2, fs * 1.2, '#065f46', 700, r.name || 'Room'));
     g.appendChild(haloText(c[0], c[1] + fs * 1.2, fs, '#065f46', 400, m.area == null ? 'set scale' : `${m.area.toFixed(1)} m²`));
@@ -1789,9 +1793,30 @@ window.addEventListener('beforeunload', () => {
 
 
 // ── selecting, moving and deleting several things at once ──────────────────
-const groupCount = () => st.group ? st.group.marks.length + st.group.pins.length + st.group.items.length : 0;
+const GROUP_KINDS = ['marks', 'pins', 'items', 'rooms', 'measures'];
+const newGroup = () => ({ marks: [], pins: [], items: [], rooms: [], measures: [] });
+const groupCount = () => st.group ? GROUP_KINDS.reduce((n, k) => n + st.group[k].length, 0) : 0;
+function hitMeasure(x, y) {
+  const tol = 7 / st.view.k;
+  for (let i = st.measures.length - 1; i >= 0; i--) { const m = st.measures[i]; if (distSeg(x, y, m.a[0], m.a[1], m.b[0], m.b[1]) <= tol) return m; }
+  return null;
+}
+function hitRoomEdge(x, y) {      // on the outline only, so dragging empty space inside a room still pans
+  const tol = 7 / st.view.k;
+  for (const r of st.rooms) for (let i = 0; i < r.poly.length; i++) { const a = r.poly[i], b = r.poly[(i + 1) % r.poly.length]; if (distSeg(x, y, a[0], a[1], b[0], b[1]) <= tol) return r; }
+  return null;
+}
+function hitAny(x, y) {          // what is under the pointer: { kind, obj } or null
+  const pin = hitPin(x, y); if (pin) return { kind: 'pins', obj: pin };
+  const mark = hitMark(x, y); if (mark) return { kind: 'marks', obj: mark };
+  const item = hitItem(x, y); if (item) return { kind: 'items', obj: item };
+  const ms = hitMeasure(x, y); if (ms) return { kind: 'measures', obj: ms };
+  const room = hitRoomEdge(x, y); if (room) return { kind: 'rooms', obj: room };
+  const mask = hitMask(x, y); if (mask) return { kind: 'marks', obj: mask };
+  return null;
+}
 const inGroup = (kind, id) => !!st.group && st.group[kind].includes(id);
-function pointsOf(m) { return m.type === 'text' ? [m.pts[0], [textBox(m)[2], m.pts[0][1]]] : m.pts; }
+function pointsOf(m) { return m.type === 'text' ? [m.pts[0], [textBox(m)[2], m.pts[0][1]]] : m.type === 'mask' ? [[(m.pts[0][0] + m.pts[1][0]) / 2, (m.pts[0][1] + m.pts[1][1]) / 2]] : m.pts; }
 function boxSelect(a, b) {
   const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
   const inside = (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
@@ -1799,8 +1824,10 @@ function boxSelect(a, b) {
     marks: st.marks.filter(m => pointsOf(m).some(q => inside(q[0], q[1]))).map(m => m.id),
     pins: st.pins.filter(q => pinVisible(q) && inside(q.x, q.y)).map(q => q.id),
     items: shownItems().filter(i => inside(i.x, i.y)).map(i => i.id),
+    rooms: st.rooms.filter(r => { const c = centroid(r.poly); return inside(c[0], c[1]); }).map(r => r.id),
+    measures: st.measures.filter(m => inside((m.a[0] + m.b[0]) / 2, (m.a[1] + m.b[1]) / 2)).map(m => m.id),
   };
-  return g.marks.length + g.pins.length + g.items.length ? g : null;
+  return GROUP_KINDS.some(k => g[k].length) ? g : null;
 }
 function setGroup(g) {
   st.group = g; st.selected = null; st.selMark = null; st.selectedPin = null;
@@ -1810,25 +1837,22 @@ function moveGroup(dx, dy) {
   for (const m of st.marks) if (inGroup('marks', m.id)) m.pts = m.pts.map(q => [q[0] + dx, q[1] + dy]);
   for (const q of st.pins) if (inGroup('pins', q.id)) { q.x += dx; q.y += dy; }
   for (const i of st.items) if (inGroup('items', i.id)) { i.x += dx; i.y += dy; }
+  for (const r of st.rooms) if (inGroup('rooms', r.id)) r.poly = r.poly.map(q => [q[0] + dx, q[1] + dy]);
+  for (const m of st.measures) if (inGroup('measures', m.id)) { m.a = [m.a[0] + dx, m.a[1] + dy]; m.b = [m.b[0] + dx, m.b[1] + dy]; }
 }
 function selectionCount() { return groupCount() || (st.selMark ? 1 : 0) + (st.selected ? 1 : 0) + (st.selectedPin ? 1 : 0); }
 function deleteAnySelected() {
   const n = selectionCount(); if (!n) return;
-  if (st.group) {
-    if (n > 1 && !confirm(`Delete ${n} selected things? Drawings can be brought back with Ctrl+Z, pins and furniture cannot.`)) return;
-    if (st.group.marks.length) pushMarkUndo();
-    st.marks = st.marks.filter(m => !inGroup('marks', m.id));
-    st.pins = st.pins.filter(q => !inGroup('pins', q.id));
-    st.items = st.items.filter(i => !inGroup('items', i.id));
-    st.group = null; st.selMark = null; st.selected = null; st.selectedPin = null;
-    scheduleSave(); renderMarkPanel(); renderMarkTools(); renderRooms(); renderSelected(); renderOptions(); renderReview(); renderOverlay();
-  } else if (st.selMark) deleteMark(st.selMark);
-  else if (st.selectedPin) {
-    const q = st.pins.find(p => p.id === st.selectedPin);
-    if (q && q.thread.length && !confirm('This pin has comments. Delete it anyway?')) return;
-    st.pins = st.pins.filter(p => p.id !== st.selectedPin); st.selectedPin = null;
-    scheduleSave(); renderReview(); renderOverlay();
-  } else if (st.selected) deleteSelected();
+  const g = st.group || { ...newGroup(), marks: st.selMark ? [st.selMark] : [], pins: st.selectedPin ? [st.selectedPin] : [], items: st.selected ? [st.selected] : [] };
+  pushUndoSnap(snapKeys(GROUP_KINDS.filter(k => g[k].length)));          // every delete can be taken back with Undo / Ctrl+Z
+  st.marks = st.marks.filter(m => !g.marks.includes(m.id));
+  st.pins = st.pins.filter(q => !g.pins.includes(q.id));
+  st.items = st.items.filter(i => !g.items.includes(i.id));
+  st.rooms = st.rooms.filter(r => !g.rooms.includes(r.id));
+  st.measures = st.measures.filter(m => !g.measures.includes(m.id));
+  st.group = null; st.selMark = null; st.selected = null; st.selectedPin = null;
+  scheduleSave(); renderMarkPanel(); renderMarkTools(); renderRooms(); renderMeasures(); renderSelected(); renderOptions(); renderReview(); renderOverlay();
+  $('mk-tip').textContent = `Deleted ${n}. Press Undo (Ctrl+Z) to bring ${n > 1 ? 'them' : 'it'} back.`;
 }
 function renderDeleteBtn() {
   const n = selectionCount(), b = $('mk-delete');
@@ -1839,13 +1863,24 @@ $('mk-delete').onclick = deleteAnySelected;
 
 // ── markup: pen, arrows, text, eraser ──────────────────────────────────────
 // Marks live in PDF points like everything else, so they stay put when you zoom and print at the right size.
-const markSnapshot = () => JSON.stringify(st.marks);
-function pushMarkUndo() { st.markUndo.push(markSnapshot()); if (st.markUndo.length > 60) st.markUndo.shift(); }
+function snapKeys(keys) {
+  const o = {};
+  for (const k of keys) o[k] = k === 'measures' ? st.measures.map(m => ({ id: m.id, a: m.a, b: m.b })) : st[k];
+  return JSON.stringify(o);
+}
+const markSnapshot = () => snapKeys(['marks']);
+function pushUndoSnap(snap) { st.markUndo.push(snap); if (st.markUndo.length > 60) st.markUndo.shift(); }
+function pushMarkUndo() { pushUndoSnap(markSnapshot()); }
+function restoreSnap(snap) {
+  const o = JSON.parse(snap);
+  for (const k in o) st[k] = k === 'measures' ? o.measures.map(m => ({ ...m, view: viewAt(m.a[0], m.a[1]) })) : o[k];
+}
 function undoMark() {
   if (!st.markUndo.length) return;
-  st.marks = JSON.parse(st.markUndo.pop());
+  restoreSnap(st.markUndo.pop());
+  st.group = null; st.selected = null; st.selectedPin = null;
   if (!st.marks.some(m => m.id === st.selMark)) st.selMark = null;
-  markChanged();
+  renderRooms(); renderMeasures(); renderSelected(); renderOptions(); renderReview(); markChanged();
 }
 function markChanged() { scheduleSave(); renderMarkPanel(); renderMarkTools(); renderOverlay(); }
 function distSeg(px, py, ax, ay, bx, by) {
@@ -1855,6 +1890,7 @@ function distSeg(px, py, ax, ay, bx, by) {
 }
 function textBox(m) { const [x, y] = m.pts[0]; return [x, y - m.size, x + Math.max(1, m.text.length) * m.size * 0.58, y + m.size * 0.3]; }
 function markHit(m, x, y, tol) {
+  if (m.type === 'mask') { const [a, b] = m.pts; return x >= Math.min(a[0], b[0]) - tol && x <= Math.max(a[0], b[0]) + tol && y >= Math.min(a[1], b[1]) - tol && y <= Math.max(a[1], b[1]) + tol; }
   if (m.type === 'text') { const b = textBox(m); return x >= b[0] - tol && x <= b[2] + tol && y >= b[1] - tol && y <= b[3] + tol; }
   const r = tol + m.width / 2;
   if (m.pts.length === 1) return Math.hypot(x - m.pts[0][0], y - m.pts[0][1]) <= r;
@@ -1863,7 +1899,11 @@ function markHit(m, x, y, tol) {
 }
 function hitMark(x, y) {
   const tol = 6 / st.view.k;
-  for (let i = st.marks.length - 1; i >= 0; i--) if (markHit(st.marks[i], x, y, tol)) return st.marks[i];
+  for (let i = st.marks.length - 1; i >= 0; i--) if (st.marks[i].type !== 'mask' && markHit(st.marks[i], x, y, tol)) return st.marks[i];
+  return null;
+}
+function hitMask(x, y) {         // white-out boxes come last, so they never hide the furniture, pins or lines on top of them
+  for (let i = st.marks.length - 1; i >= 0; i--) if (st.marks[i].type === 'mask' && markHit(st.marks[i], x, y, 0)) return st.marks[i];
   return null;
 }
 function simplify(pts, eps) {      // Ramer–Douglas–Peucker, so long strokes stay light to store and redraw
@@ -1877,8 +1917,16 @@ function simplify(pts, eps) {      // Ramer–Douglas–Peucker, so long strokes
   }
   return pts.filter((_, i) => keep[i]);
 }
+function maskRect(m) { const [a, b] = m.pts; return { x: Math.min(a[0], b[0]), y: Math.min(a[1], b[1]), width: Math.abs(a[0] - b[0]), height: Math.abs(a[1] - b[1]) }; }
+function drawMasks(g, k) {        // white boxes sit above the PDF but below furniture, rooms and drawings
+  for (const m of st.marks) {
+    if (m.type !== 'mask') continue;
+    g.appendChild(el('rect', { ...maskRect(m), fill: '#ffffff', stroke: g === overlay && (m.id === st.selMark || inGroup('marks', m.id)) ? '#1d4ed8' : g === overlay && st.mode === 'white' ? '#9ca3af' : 'none', 'stroke-width': 1.5, 'stroke-dasharray': '5 3', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
+  }
+}
 function drawMarks(g, k) {
   for (const m of st.marks) {
+    if (m.type === 'mask') continue;
     const sel = g === overlay && (m.id === st.selMark || inGroup('marks', m.id));
     const common = { 'pointer-events': 'none' };
     if (sel) {
@@ -1908,22 +1956,23 @@ function deleteMark(id) { pushMarkUndo(); st.marks = st.marks.filter(m => m.id !
 function startMark(wx, wy) {       // returns the in-progress drag state for the pen, arrow and eraser
   const mkSz = MK_SIZES[st.mkSize], k = st.view.k;
   if (st.mode === 'erase') { const d = { kind: 'erase', undone: false }; eraseAt(d, wx, wy); return d; }
-  if (st.mode !== 'pen' && st.mode !== 'arrow') return null;
+  if (st.mode !== 'pen' && st.mode !== 'arrow' && st.mode !== 'white') return null;
   pushMarkUndo();
   const m = { id: uid(), type: st.mode, color: st.mkColor, width: mkSz.px / k, size: mkSz.text / k, text: '', pts: st.mode === 'pen' ? [[wx, wy]] : [[wx, wy], [wx, wy]] };
+  if (st.mode === 'white') m.type = 'mask';
   st.marks.push(m);
   return { kind: 'draw', m };
 }
 function extendMark(d, wx, wy) {
   if (d.kind === 'erase') { eraseAt(d, wx, wy); return; }
   const m = d.m;
-  if (m.type === 'arrow') m.pts[1] = [wx, wy];
+  if (m.type === 'arrow' || m.type === 'mask') m.pts[1] = [wx, wy];
   else { const l = m.pts[m.pts.length - 1]; if (Math.hypot(wx - l[0], wy - l[1]) * st.view.k >= 1.5) m.pts.push([wx, wy]); }
   renderOverlay();
 }
 function eraseAt(d, wx, wy) {
   st.hover = [wx, wy];
-  const tol = ERASE_PX / st.view.k, hit = st.marks.filter(m => markHit(m, wx, wy, tol));
+  const tol = ERASE_PX / st.view.k, all = st.marks.filter(m => markHit(m, wx, wy, tol)), hit = all.some(m => m.type !== 'mask') ? all.filter(m => m.type !== 'mask') : all;
   if (hit.length) {
     if (!d.undone) { st.markUndo.push(markSnapshot()); d.undone = true; }
     st.marks = st.marks.filter(m => !hit.includes(m));
@@ -1935,7 +1984,7 @@ function eraseAt(d, wx, wy) {
 function finishMark(d) {
   if (d.kind === 'erase') { if (d.removed) markChanged(); else renderOverlay(); return; }
   const m = d.m;
-  if (m.type === 'arrow' && Math.hypot(m.pts[1][0] - m.pts[0][0], m.pts[1][1] - m.pts[0][1]) * st.view.k < 4) { st.marks.pop(); st.markUndo.pop(); renderOverlay(); return; }   // a click, not an arrow
+  if ((m.type === 'arrow' || m.type === 'mask') && Math.hypot(m.pts[1][0] - m.pts[0][0], m.pts[1][1] - m.pts[0][1]) * st.view.k < 4) { st.marks.pop(); st.markUndo.pop(); renderOverlay(); return; }   // a click, not an arrow
   if (m.type === 'pen') { m.pts = simplify(m.pts, 0.6 / st.view.k); if (m.pts.length > 3000) m.pts = m.pts.filter((_, i) => i % Math.ceil(m.pts.length / 3000) === 0); }
   markChanged();
 }
@@ -1988,7 +2037,7 @@ function renderMarkPanel() {
   if (!m) return;
   const wrap = document.createElement('div'); wrap.className = 'sel-box';
   const t = document.createElement('div'); t.className = 'hint'; t.style.margin = '0 0 6px';
-  t.textContent = `Selected ${m.type === 'pen' ? 'pen stroke' : m.type}. Drag it to move it; pick a colour above to recolour it.`;
+  t.textContent = `Selected ${m.type === 'pen' ? 'pen stroke' : m.type === 'mask' ? 'white-out box' : m.type}. Drag it to move it; pick a colour above to recolour it.`;
   wrap.appendChild(t);
   if (m.type === 'text') {
     const row = document.createElement('div'); row.className = 'row';
@@ -2000,7 +2049,7 @@ function renderMarkPanel() {
   const r = document.createElement('div'); r.className = 'btns'; r.appendChild(b); wrap.appendChild(r);
   box.appendChild(wrap);
 }
-for (const [id, mode] of [['mk-pen', 'pen'], ['mk-arrow', 'arrow'], ['mk-text', 'text'], ['mk-erase', 'erase']]) $(id).onclick = () => setMode(st.mode === mode ? null : mode);
+for (const [id, mode] of [['mk-pen', 'pen'], ['mk-arrow', 'arrow'], ['mk-text', 'text'], ['mk-erase', 'erase'], ['mk-white', 'white']]) $(id).onclick = () => setMode(st.mode === mode ? null : mode);
 $('mk-undo').onclick = undoMark;
 $('mk-select').onclick = () => setMode(null);
 
@@ -2079,14 +2128,13 @@ svg.addEventListener('pointerdown', e => {
   drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null, mark: null, markMove: null, box: null, groupMove: null, button: e.button };
   if (e.button !== 0) return;               // right and middle buttons only pan
   if (st.mode === 'measure' && st.pending.length === 0) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.ruler = snap(wx, wy).p; }
-  if (st.mode === 'pen' || st.mode === 'arrow' || st.mode === 'erase') { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.mark = startMark(wx, wy); return; }
+  if (st.mode === 'pen' || st.mode === 'arrow' || st.mode === 'erase' || st.mode === 'white') { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.mark = startMark(wx, wy); return; }
   if (st.mode === 'box') { drag.box = { a: screenToWorld(e.clientX, e.clientY) }; return; }
   if (!st.mode) {
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
     if (st.group || e.shiftKey) {          // pressing on something in the group drags the whole group; shift adds or removes; elsewhere clears it
-      if (!st.group) { st.group = { marks: st.selMark ? [st.selMark] : [], pins: st.selectedPin ? [st.selectedPin] : [], items: st.selected ? [st.selected] : [] }; st.selMark = st.selectedPin = st.selected = null; }
-      const pin0 = hitPin(wx, wy), mark0 = pin0 ? null : hitMark(wx, wy), item0 = pin0 || mark0 ? null : hitItem(wx, wy);
-      const kind = pin0 ? 'pins' : mark0 ? 'marks' : item0 ? 'items' : null, obj = pin0 || mark0 || item0;
+      if (!st.group) { st.group = { ...newGroup(), marks: st.selMark ? [st.selMark] : [], pins: st.selectedPin ? [st.selectedPin] : [], items: st.selected ? [st.selected] : [] }; st.selMark = st.selectedPin = st.selected = null; }
+      const found = hitAny(wx, wy), kind = found && found.kind, obj = found && found.obj;
       if (obj && e.shiftKey) { const a = st.group[kind], i = a.indexOf(obj.id); if (i >= 0) a.splice(i, 1); else a.push(obj.id); if (!groupCount()) st.group = null; renderSelected(); renderMarkPanel(); renderReview(); renderOverlay(); drag.mark = null; drag.moved = false; drag.box = null; drag.noop = true; return; }
       if (obj && inGroup(kind, obj.id)) { drag.groupMove = { last: [wx, wy], started: false }; return; }
       if (!obj) { if (!groupCount()) st.group = null; drag.clearGroup = true; return; }
@@ -2100,6 +2148,10 @@ svg.addEventListener('pointerdown', e => {
     else if (pin) { drag.pin = { q: pin, ox: pin.x - wx, oy: pin.y - wy }; selectPin(pin.id); }
     else if (mark) { drag.markMove = { m: mark, last: [wx, wy], undone: false }; selectMark(mark.id); }
     else if (hit) { drag.item = { it: hit, ox: hit.x - wx, oy: hit.y - wy }; selectItem(hit.id); }
+    else {                     // a ruler line or a room outline: selected as a group of one, so move and delete work the same way
+      const other = hitAny(wx, wy);
+      if (other) { const g = newGroup(); g[other.kind].push(other.obj.id); setGroup(g); drag.groupMove = { last: [wx, wy], started: false }; }
+    }
   }
 });
 svg.addEventListener('pointermove', e => {
@@ -2111,7 +2163,7 @@ svg.addEventListener('pointermove', e => {
     if (drag.groupMove) {
       if (drag.moved) {
         const gm = drag.groupMove, [wx, wy] = screenToWorld(e.clientX, e.clientY);
-        if (!gm.started) { gm.started = true; if (st.group.marks.length) st.markUndo.push(markSnapshot()); }
+        if (!gm.started) { gm.started = true; pushUndoSnap(snapKeys(GROUP_KINDS.filter(k => st.group[k].length))); }
         moveGroup(wx - gm.last[0], wy - gm.last[1]); gm.last = [wx, wy]; renderOverlay();
       }
       return;
@@ -2193,7 +2245,7 @@ svg.addEventListener('pointerup', e => {
 svg.addEventListener('pointercancel', () => {
   const moved = drag && drag.moved && (drag.item || drag.handle || drag.pin);
   if (drag && drag.mark) cancelMark(drag.mark);
-  if (drag && drag.markMove && drag.markMove.undone) { st.marks = JSON.parse(st.markUndo.pop()); }
+  if (drag && drag.markMove && drag.markMove.undone) { restoreSnap(st.markUndo.pop()); }
   drag = null; st.pending = []; st.hover = null; renderOverlay();
   if (moved) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); }
 });
