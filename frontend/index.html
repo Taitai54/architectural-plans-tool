@@ -258,7 +258,7 @@
       <strong>Draw &amp; annotate</strong>
       <button class="btn" id="mk-select" title="Click a pin, drawing, arrow, text or furniture to select it, then drag it or press Delete (Esc)">↖ Select</button>
       <button class="btn" id="mk-box" title="Drag a box around several things to select them all (V)">▭ Box select</button>
-      <button class="btn" id="mk-delete" title="Delete what is selected (Delete key)" disabled>🗑 Delete</button>
+      <button class="btn" id="mk-delete" title="Delete what is selected (Delete key, or the red ✕ beside it)" disabled>🗑 Delete</button>
       <button class="btn" id="mk-pen" title="Draw freehand (B)">✎ Pen</button>
       <button class="btn" id="mk-arrow" title="Drag from the tail to the point (A)">➚ Arrow</button>
       <button class="btn" id="mk-text" title="Click on the plan and type (T)">T Text</button>
@@ -977,6 +977,7 @@ function renderOverlay() {
     for (const q of st.roomPts) overlay.appendChild(el('circle', { cx: q[0], cy: q[1], r: 3.5 / k, fill: '#059669' }));
   }
   for (const m of st.measures) draw(m.a, m.b, '#cc0000', lengthLabel(m.a, m.b, m.view), inGroup('measures', m.id));
+  drawDeleteBadge();
   if (st.calib) draw(st.calib.a, st.calib.b, '#0a7d3b', 'calibration line');
   if (st.pending.length === 1) {
     const a = st.pending[0], b = st.hover;
@@ -1854,6 +1855,27 @@ function deleteAnySelected() {
   scheduleSave(); renderMarkPanel(); renderMarkTools(); renderRooms(); renderMeasures(); renderSelected(); renderOptions(); renderReview(); renderOverlay();
   $('mk-tip').textContent = `Deleted ${n}. Press Undo (Ctrl+Z) to bring ${n > 1 ? 'them' : 'it'} back.`;
 }
+// A small red ✕ beside whatever is selected, so deleting is one obvious click.
+function selectionBox() {
+  const xs = [], ys = [], add = (x, y) => { xs.push(x); ys.push(y); };
+  const g = st.group || { ...newGroup(), marks: st.selMark ? [st.selMark] : [], pins: st.selectedPin ? [st.selectedPin] : [], items: st.selected ? [st.selected] : [] };
+  for (const m of st.marks) if (g.marks.includes(m.id)) { for (const q of m.pts) add(q[0], q[1]); if (m.type === 'text') { const b = textBox(m); add(b[0], b[1]); add(b[2], b[3]); } }
+  for (const q of st.pins) if (g.pins.includes(q.id)) { add(q.x - 9 / st.view.k, q.y - 9 / st.view.k); add(q.x + 9 / st.view.k, q.y + 9 / st.view.k); }
+  for (const i of st.items) if (g.items.includes(i.id)) { const geo = itemGeom(i); if (geo) for (const q of geo.body) add(q[0], q[1]); else add(i.x, i.y); }
+  for (const r of st.rooms) if (g.rooms.includes(r.id)) for (const q of r.poly) add(q[0], q[1]);
+  for (const m of st.measures) if (g.measures.includes(m.id)) { add(m.a[0], m.a[1]); add(m.b[0], m.b[1]); }
+  return xs.length ? [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] : null;
+}
+function deleteBadge() {         // world position of the ✕, or null when nothing is selected
+  if (!selectionCount() || st.mode) return null;
+  const b = selectionBox(); return b ? [b[2] + 12 / st.view.k, b[1] - 12 / st.view.k] : null;
+}
+function drawDeleteBadge() {
+  const p = deleteBadge(); if (!p) return;
+  const k = st.view.k;
+  overlay.appendChild(el('circle', { cx: p[0], cy: p[1], r: 9 / k, fill: '#dc2626', stroke: '#fff', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke', style: 'cursor:pointer' }));
+  overlay.appendChild(el('text', { x: p[0], y: p[1] + 4 / k, 'font-size': 12 / k, 'text-anchor': 'middle', fill: '#fff', 'font-family': 'Arial,sans-serif', 'font-weight': 700, 'pointer-events': 'none' }, '✕'));
+}
 function renderDeleteBtn() {
   const n = selectionCount(), b = $('mk-delete');
   b.disabled = !n; b.textContent = n > 1 ? `🗑 Delete (${n})` : '🗑 Delete';
@@ -2132,6 +2154,8 @@ svg.addEventListener('pointerdown', e => {
   if (st.mode === 'box') { drag.box = { a: screenToWorld(e.clientX, e.clientY) }; return; }
   if (!st.mode) {
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+    const badge = deleteBadge();
+    if (badge && Math.hypot(badge[0] - wx, badge[1] - wy) * st.view.k <= 11) { deleteAnySelected(); drag.noop = true; return; }
     if (st.group || e.shiftKey) {          // pressing on something in the group drags the whole group; shift adds or removes; elsewhere clears it
       if (!st.group) { st.group = { ...newGroup(), marks: st.selMark ? [st.selMark] : [], pins: st.selectedPin ? [st.selectedPin] : [], items: st.selected ? [st.selected] : [] }; st.selMark = st.selectedPin = st.selected = null; }
       const found = hitAny(wx, wy), kind = found && found.kind, obj = found && found.obj;
