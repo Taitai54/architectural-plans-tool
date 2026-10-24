@@ -25,6 +25,6 @@ echo.
 echo Starting Architectural Plans Tool at http://localhost:8000
 echo Leave this window open while you use it. Close it or press Ctrl+C to stop.
 echo.
-start "" /min cmd /c "timeout /t 3 >nul & start http://localhost:8000"
+start "" /min cmd /c ""%~dp0open-browser.bat""
 %PY% -m uvicorn main:app --host 127.0.0.1 --port 8000
 pause

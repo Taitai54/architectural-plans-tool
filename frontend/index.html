@@ -256,7 +256,9 @@
     </div>
     <div class="markbar" id="markbar" hidden>
       <strong>Draw &amp; annotate</strong>
-      <button class="btn" id="mk-select" title="Stop drawing; click marks and furniture to select them (Esc)">↖ Select</button>
+      <button class="btn" id="mk-select" title="Click a pin, drawing, arrow, text or furniture to select it, then drag it or press Delete (Esc)">↖ Select</button>
+      <button class="btn" id="mk-box" title="Drag a box around several things to select them all (V)">▭ Box select</button>
+      <button class="btn" id="mk-delete" title="Delete what is selected (Delete key)" disabled>🗑 Delete</button>
       <button class="btn" id="mk-pen" title="Draw freehand (B)">✎ Pen</button>
       <button class="btn" id="mk-arrow" title="Drag from the tail to the point (A)">➚ Arrow</button>
       <button class="btn" id="mk-text" title="Click on the plan and type (T)">T Text</button>
@@ -318,14 +320,16 @@ const st = {
   pins: [], selectedPin: null, pinFilter: 'all', notesImported: false,
   options: [], activeOption: null, showProposals: true, showRejected: false,
   marks: [],             // { id, type: 'pen'|'arrow'|'text', color, width, size, text, pts: [[x,y],...] }  (width/size in PDF points)
+  group: null, marquee: null,   // group: { marks: [ids], pins: [ids], items: [ids] } picked with box select
   selMark: null, mkColor: '#dc2626', mkSize: 1, markUndo: [],
   clip: null, pasteN: 0, // copied furniture item
 };
 const MARK_MODES = ['pen', 'arrow', 'text', 'erase'];
+const TOOL_MODES = MARK_MODES.concat('box');
 const MK_COLORS = ['#dc2626', '#1d4ed8', '#059669', '#d97706', '#111827'];
 const MK_SIZES = [{ name: 'Fine', px: 2, text: 12 }, { name: 'Medium', px: 4, text: 16 }, { name: 'Bold', px: 7, text: 24 }];
 const ERASE_PX = 10;
-const MK_TIPS = { pen: 'Pen: press and drag on the plan to draw.', arrow: 'Arrow: press at the tail and drag to the point.', text: 'Text: click where the text should go, type, press Enter.', erase: 'Eraser: drag over drawings, arrows or text to rub them out.', none: 'Pick a tool, then click or drag on the plan. Click a mark to move or edit it.' };
+const MK_TIPS = { pen: 'Pen: press and drag on the plan to draw.', arrow: 'Arrow: press at the tail and drag to the point.', text: 'Text: click where the text should go, type, press Enter.', erase: 'Eraser: drag over drawings, arrows or text to rub them out.', box: 'Box select: drag a rectangle around the pins, drawings, text or furniture you want. Then drag them or press Delete.', none: 'Select: click a pin, drawing, text or furniture, then drag it or press Delete. Drag empty space to pan.' };
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function el(name, attrs = {}, text) {
@@ -458,7 +462,7 @@ async function loadPage(n) {
   st.page = n; st.scene = scene;
   applyState(st.scene.state || {});
   st.selected = null; st.pending = []; st.calib = null; st.roomPts = []; setMode(null);
-  st.markUndo = []; st.selMark = null;
+  st.markUndo = []; st.selMark = null; st.group = null;
   chat.log = []; renderChat(); $('chat').classList.add('visible');
   st.candidates = []; renderCandidates();
   st.catOn = { ...CLEAN, text: 0 }; st.tidyOn = true;
@@ -900,14 +904,16 @@ function setMode(m) {
   if (m !== 'place' && m !== 'room') $('room-hint').textContent = ROOM_HINT;
   $('btn-room').classList.toggle('on', m === 'room');
   if (m !== 'calibrate') { st.calib = null; $('calib-form').hidden = true; }
-  stage.classList.toggle('measuring', !!m && !MARK_MODES.includes(m));
-  stage.classList.toggle('marking', MARK_MODES.includes(m) && m !== 'erase');
+  stage.classList.toggle('measuring', !!m && !TOOL_MODES.includes(m));
+  stage.classList.toggle('marking', TOOL_MODES.includes(m) && m !== 'erase');
   stage.classList.toggle('erasing', m === 'erase');
   cancelText();
-  for (const t of MARK_MODES) $('mk-' + t).classList.toggle('on', m === t);
+  for (const t of TOOL_MODES) $('mk-' + t).classList.toggle('on', m === t);
+  st.marquee = null;
+  if (m && m !== 'box') st.group = null;
   $('mk-select').classList.toggle('on', !m);
   $('mk-tip').textContent = MK_TIPS[m] || (m ? 'Press Esc to go back to selecting.' : MK_TIPS.none);
-  if (MARK_MODES.includes(m)) { selectItem(null); selectMark(null); }
+  if (TOOL_MODES.includes(m)) { selectItem(null); selectMark(null); selectPin(null); }
   $('btn-measure').classList.toggle('on', m === 'measure');
   $('btn-calibrate').classList.toggle('on', m === 'calibrate');
   $('mode-hint').textContent = m === 'measure' ? 'Press on the first point and drag to the second (or click both). Measure as many as you like; Esc to stop.'
@@ -950,6 +956,7 @@ function snap(x, y) {
 
 function renderOverlay() {
   overlay.textContent = '';
+  renderDeleteBtn();
   const k = st.view.k, fs = 12 / k;
   buildExtras(overlay, k);
   const draw = (a, b, color, label) => {
@@ -960,6 +967,7 @@ function renderOverlay() {
       overlay.appendChild(t);
     }
   };
+  if (st.marquee) { const [a, b] = st.marquee; overlay.appendChild(el('rect', { x: Math.min(a[0], b[0]), y: Math.min(a[1], b[1]), width: Math.abs(a[0] - b[0]), height: Math.abs(a[1] - b[1]), fill: 'rgba(29,78,216,.08)', stroke: '#1d4ed8', 'stroke-width': 1, 'stroke-dasharray': '5 3', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' })); }
   if (st.mode === 'erase' && st.hover) overlay.appendChild(el('circle', { cx: st.hover[0], cy: st.hover[1], r: ERASE_PX / k, fill: 'rgba(255,255,255,.5)', stroke: '#6b7280', 'stroke-width': 1, 'stroke-dasharray': '3 3', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
   if (st.mode === 'room' && st.roomPts.length) {
     const pts = st.roomPts.concat(st.hover ? [st.hover] : []);
@@ -1173,7 +1181,7 @@ const pinVisible = q => st.pinFilter === 'all' || q.status === st.pinFilter;
 function drawPins(g, k) {
   st.pins.forEach((q, i) => {
     if (!pinVisible(q)) return;
-    const sel = q.id === st.selectedPin;
+    const sel = q.id === st.selectedPin || (g === overlay && inGroup('pins', q.id));
     g.appendChild(el('circle', { cx: q.x, cy: q.y, r: 9 / k, fill: q.status === 'open' ? '#dc2626' : '#16a34a', stroke: sel ? '#111827' : '#fff', 'stroke-width': sel ? 3 : 1.5, 'vector-effect': 'non-scaling-stroke' }));
     g.appendChild(el('text', { x: q.x, y: q.y + 3.5 / k, 'font-size': 10 / k, 'text-anchor': 'middle', fill: '#fff', 'font-family': 'Arial,sans-serif', 'font-weight': 700, 'pointer-events': 'none' }, String(i + 1)));
   });
@@ -1192,7 +1200,7 @@ function buildExtras(g, k) {
     g.appendChild(haloText(ct[0], ct[1] - cf * 0.2, cf * 1.1, '#115e59', 700, (c.selected ? '' : '○ ') + (c.name || 'Room?')));
     g.appendChild(haloText(ct[0], ct[1] + cf * 1.2, cf, '#115e59', 400, `${c.area_m2.toFixed(1)} m²` + (c.boundary === 'estimated' ? ' · estimated edge' : '')));
   }
-  for (const it of shownItems()) drawItem(g, it, k, it.id === st.selected, false);
+  for (const it of shownItems()) drawItem(g, it, k, it.id === st.selected || (g === overlay && inGroup('items', it.id)), false);
   for (const it of shownItems()) {      // a pending change links back to the item it would replace
     const old = it.replaces && st.items.find(i => i.id === it.replaces);
     if (old && shownItems().includes(old)) g.appendChild(el('line', { x1: old.x, y1: old.y, x2: it.x, y2: it.y, stroke: '#7c3aed', 'stroke-width': 1.5, 'stroke-dasharray': '3 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
@@ -1780,6 +1788,55 @@ window.addEventListener('beforeunload', () => {
 });
 
 
+// ── selecting, moving and deleting several things at once ──────────────────
+const groupCount = () => st.group ? st.group.marks.length + st.group.pins.length + st.group.items.length : 0;
+const inGroup = (kind, id) => !!st.group && st.group[kind].includes(id);
+function pointsOf(m) { return m.type === 'text' ? [m.pts[0], [textBox(m)[2], m.pts[0][1]]] : m.pts; }
+function boxSelect(a, b) {
+  const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
+  const inside = (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+  const g = {
+    marks: st.marks.filter(m => pointsOf(m).some(q => inside(q[0], q[1]))).map(m => m.id),
+    pins: st.pins.filter(q => pinVisible(q) && inside(q.x, q.y)).map(q => q.id),
+    items: shownItems().filter(i => inside(i.x, i.y)).map(i => i.id),
+  };
+  return g.marks.length + g.pins.length + g.items.length ? g : null;
+}
+function setGroup(g) {
+  st.group = g; st.selected = null; st.selMark = null; st.selectedPin = null;
+  renderSelected(); renderMarkPanel(); renderReview(); renderOverlay();
+}
+function moveGroup(dx, dy) {
+  for (const m of st.marks) if (inGroup('marks', m.id)) m.pts = m.pts.map(q => [q[0] + dx, q[1] + dy]);
+  for (const q of st.pins) if (inGroup('pins', q.id)) { q.x += dx; q.y += dy; }
+  for (const i of st.items) if (inGroup('items', i.id)) { i.x += dx; i.y += dy; }
+}
+function selectionCount() { return groupCount() || (st.selMark ? 1 : 0) + (st.selected ? 1 : 0) + (st.selectedPin ? 1 : 0); }
+function deleteAnySelected() {
+  const n = selectionCount(); if (!n) return;
+  if (st.group) {
+    if (n > 1 && !confirm(`Delete ${n} selected things? Drawings can be brought back with Ctrl+Z, pins and furniture cannot.`)) return;
+    if (st.group.marks.length) pushMarkUndo();
+    st.marks = st.marks.filter(m => !inGroup('marks', m.id));
+    st.pins = st.pins.filter(q => !inGroup('pins', q.id));
+    st.items = st.items.filter(i => !inGroup('items', i.id));
+    st.group = null; st.selMark = null; st.selected = null; st.selectedPin = null;
+    scheduleSave(); renderMarkPanel(); renderMarkTools(); renderRooms(); renderSelected(); renderOptions(); renderReview(); renderOverlay();
+  } else if (st.selMark) deleteMark(st.selMark);
+  else if (st.selectedPin) {
+    const q = st.pins.find(p => p.id === st.selectedPin);
+    if (q && q.thread.length && !confirm('This pin has comments. Delete it anyway?')) return;
+    st.pins = st.pins.filter(p => p.id !== st.selectedPin); st.selectedPin = null;
+    scheduleSave(); renderReview(); renderOverlay();
+  } else if (st.selected) deleteSelected();
+}
+function renderDeleteBtn() {
+  const n = selectionCount(), b = $('mk-delete');
+  b.disabled = !n; b.textContent = n > 1 ? `🗑 Delete (${n})` : '🗑 Delete';
+}
+$('mk-box').onclick = () => setMode(st.mode === 'box' ? null : 'box');
+$('mk-delete').onclick = deleteAnySelected;
+
 // ── markup: pen, arrows, text, eraser ──────────────────────────────────────
 // Marks live in PDF points like everything else, so they stay put when you zoom and print at the right size.
 const markSnapshot = () => JSON.stringify(st.marks);
@@ -1822,7 +1879,7 @@ function simplify(pts, eps) {      // Ramer–Douglas–Peucker, so long strokes
 }
 function drawMarks(g, k) {
   for (const m of st.marks) {
-    const sel = g === overlay && m.id === st.selMark;
+    const sel = g === overlay && (m.id === st.selMark || inGroup('marks', m.id));
     const common = { 'pointer-events': 'none' };
     if (sel) {
       if (m.type === 'text') { const b = textBox(m); g.appendChild(el('rect', { x: b[0] - 3 / k, y: b[1] - 3 / k, width: b[2] - b[0] + 6 / k, height: b[3] - b[1] + 6 / k, fill: 'rgba(29,78,216,.08)', stroke: '#1d4ed8', 'stroke-width': 1, 'stroke-dasharray': '4 3', 'vector-effect': 'non-scaling-stroke', ...common })); }
@@ -2019,12 +2076,22 @@ let drag = null;
 svg.addEventListener('pointerdown', e => {
   if (!st.scene) return;
   svg.setPointerCapture(e.pointerId);
-  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null, mark: null, markMove: null, button: e.button };
+  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null, mark: null, markMove: null, box: null, groupMove: null, button: e.button };
   if (e.button !== 0) return;               // right and middle buttons only pan
   if (st.mode === 'measure' && st.pending.length === 0) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.ruler = snap(wx, wy).p; }
   if (st.mode === 'pen' || st.mode === 'arrow' || st.mode === 'erase') { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.mark = startMark(wx, wy); return; }
+  if (st.mode === 'box') { drag.box = { a: screenToWorld(e.clientX, e.clientY) }; return; }
   if (!st.mode) {
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+    if (st.group || e.shiftKey) {          // pressing on something in the group drags the whole group; shift adds or removes; elsewhere clears it
+      if (!st.group) { st.group = { marks: st.selMark ? [st.selMark] : [], pins: st.selectedPin ? [st.selectedPin] : [], items: st.selected ? [st.selected] : [] }; st.selMark = st.selectedPin = st.selected = null; }
+      const pin0 = hitPin(wx, wy), mark0 = pin0 ? null : hitMark(wx, wy), item0 = pin0 || mark0 ? null : hitItem(wx, wy);
+      const kind = pin0 ? 'pins' : mark0 ? 'marks' : item0 ? 'items' : null, obj = pin0 || mark0 || item0;
+      if (obj && e.shiftKey) { const a = st.group[kind], i = a.indexOf(obj.id); if (i >= 0) a.splice(i, 1); else a.push(obj.id); if (!groupCount()) st.group = null; renderSelected(); renderMarkPanel(); renderReview(); renderOverlay(); drag.mark = null; drag.moved = false; drag.box = null; drag.noop = true; return; }
+      if (obj && inGroup(kind, obj.id)) { drag.groupMove = { last: [wx, wy], started: false }; return; }
+      if (!obj) { if (!groupCount()) st.group = null; drag.clearGroup = true; return; }
+      st.group = null;
+    }
     const sel = st.items.find(i => i.id === st.selected), side = sel && shownItems().includes(sel) ? hitHandle(sel, wx, wy) : null;
     const pin = side ? null : hitPin(wx, wy);
     const mark = side || pin ? null : hitMark(wx, wy);
@@ -2040,6 +2107,15 @@ svg.addEventListener('pointermove', e => {
   if (drag) {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(dx, dy) > 4) drag.moved = true;
+    if (drag.box) { st.marquee = [drag.box.a, screenToWorld(e.clientX, e.clientY)]; renderOverlay(); return; }
+    if (drag.groupMove) {
+      if (drag.moved) {
+        const gm = drag.groupMove, [wx, wy] = screenToWorld(e.clientX, e.clientY);
+        if (!gm.started) { gm.started = true; if (st.group.marks.length) st.markUndo.push(markSnapshot()); }
+        moveGroup(wx - gm.last[0], wy - gm.last[1]); gm.last = [wx, wy]; renderOverlay();
+      }
+      return;
+    }
     if (drag.mark) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); extendMark(drag.mark, wx, wy); return; }
     if (drag.markMove) {
       if (drag.moved) {
@@ -2077,8 +2153,18 @@ svg.addEventListener('pointermove', e => {
 svg.addEventListener('pointerup', e => {
   if (!drag) return;                         // the press did not start on the plan (e.g. a chip or item dropped here)
   if (drag.button !== 0) { drag = null; return; }
-  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin), ruler = drag && drag.ruler, mkDrag = drag && drag.mark, mkMove = drag && drag.markMove; drag = null;
+  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin), ruler = drag && drag.ruler, mkDrag = drag && drag.mark, mkMove = drag && drag.markMove, boxD = drag && drag.box, groupD = drag && drag.groupMove, clearG = drag && drag.clearGroup, noop = drag && drag.noop; drag = null;
   if (!st.scene) return;
+  if (noop) return;
+  if (boxD) {
+    const end = screenToWorld(e.clientX, e.clientY), tiny = Math.hypot(end[0] - boxD.a[0], end[1] - boxD.a[1]) * st.view.k < 4;
+    st.marquee = null; const g = tiny ? null : boxSelect(boxD.a, end);
+    setMode(null); setGroup(g);
+    $('mk-tip').textContent = g ? `${groupCount()} selected. Drag one to move them all, or press Delete.` : 'Nothing inside that box.';
+    return;
+  }
+  if (groupD) { if (wasDrag) { markChanged(); renderRooms(); renderSelected(); renderOptions(); renderReview(); } return; }
+  if (clearG && !wasDrag) { st.group = null; renderOverlay(); return; }
   if (mkDrag) { finishMark(mkDrag); return; }
   if (mkMove) { if (wasDrag) markChanged(); return; }
   if (ruler && wasDrag) {                      // press-drag-release: the ruler runs from where you pressed to where you let go
@@ -2124,14 +2210,13 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.key === 'Escape') { if (st.mode) setMode(null); else { selectItem(null); selectMark(null); } selectPin(null); }
+  if (e.key === 'Escape') { if (st.mode) setMode(null); else { selectItem(null); selectMark(null); } selectPin(null); if (st.group) { st.group = null; renderOverlay(); } }
   else if (e.key === 'Enter' && st.mode === 'room') closeRoom();
   else if ((e.key === 'd' || e.key === 'D') && st.scene) $('btn-room').click();
   else if ((e.key === 'p' || e.key === 'P') && st.scene) $('btn-pin').click();
   else if ((e.key === 'r' || e.key === 'R') && st.mode === 'place') { st.placeRot = ((st.placeRot || 0) + 90) % 360; renderOverlay(); }
   else if ((e.key === 'r' || e.key === 'R') && sel) rotateSelected();
-  else if ((e.key === 'Delete' || e.key === 'Backspace') && st.selMark) { e.preventDefault(); deleteMark(st.selMark); }
-  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) deleteSelected();
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && selectionCount()) { e.preventDefault(); deleteAnySelected(); }
   else if (sel && e.key.startsWith('Arrow')) { e.preventDefault(); nudge(sel, e.key, e.shiftKey ? 100 : 10); }
   else if (e.key === 'm' || e.key === 'M') $('btn-measure').click();
   else if (e.key === 'c' || e.key === 'C') $('btn-calibrate').click();
@@ -2140,6 +2225,7 @@ window.addEventListener('keydown', e => {
   else if ((e.key === 'a' || e.key === 'A') && st.scene) $('mk-arrow').click();
   else if ((e.key === 't' || e.key === 'T') && st.scene) { e.preventDefault(); $('mk-text').click(); }
   else if ((e.key === 'e' || e.key === 'E') && st.scene) $('mk-erase').click();
+  else if ((e.key === 'v' || e.key === 'V') && st.scene) $('mk-box').click();
 });
 window.addEventListener('resize', () => { if (st.scene) applyView(); });
 
@@ -2272,7 +2358,7 @@ $('open-input').onchange = async e => {
     await flushSave();
     await api(`/api/jobs/${st.jobId}/pages/${st.page}/state`, jsonPut(file.state));      // the server checks the file before anything changes on screen
     applyState(file.state);
-    st.selected = null; st.selMark = null; st.markUndo = []; st.candidates = []; setMode(null);
+    st.selected = null; st.selMark = null; st.group = null; st.markUndo = []; st.candidates = []; setMode(null);
     renderCandidates(); renderSidebar(); renderOverlay();
     status('file-status', 'success', `Opened ${from}.`);
     status('upload-status', 'success', `Loaded ${st.filename}`);

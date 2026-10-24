@@ -19,6 +19,7 @@ Upload an architectural PDF and turn it into structured, classified geometry you
 | Text in blocks | Type free text in a block's "Text" field; it is written inside the block (wrapped), and goes into the schedule CSV. |
 | Markup | The "Draw & annotate" bar above the plan has Pen (B), Arrow (A), Text (T) and Eraser (E); they draw over the plan in five colours and three sizes. Click a mark to move, recolour, edit or delete it. Ctrl+Z undoes markup changes, including erasing. |
 | My catalogue | Items you add (or "Save to my catalogue" from a placed block) are stored on the server in `backend/outputs/my-catalogue.json` and appear on every plan, every time. |
+| Select, move, delete | In the Draw & annotate bar, **Select** picks a pin, drawing, arrow, text or block (drag to move, Delete or the Delete button to remove). **Box select** (V) drags a rectangle around several things; drag one to move them all, Delete removes them. Shift+click adds or removes one. |
 | Resize blocks | Select an item and drag the white edge handles (opposite edge stays fixed, sizes snap to 10 mm), or type exact width, depth and clearance. "Save size as preset" adds it to the catalogue. |
 | Review pins | The PDF's own notes are imported as pins (wrapped lines merge into one). Add pins, drag them to the spot they refer to, reply in a thread, resolve or reopen. |
 | Options | Each option is its own set of furniture ("stove left" vs "stove right"). Duplicate an option, rename it, and compare items, furniture area, free area and clashes side by side. |
