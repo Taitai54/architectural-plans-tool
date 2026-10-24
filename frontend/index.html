@@ -2404,7 +2404,22 @@ function plainColours(root, noHalo) {
     t.parentNode.insertBefore(halo, t);
   }
 }
-function buildExportSvg(scale, forPdf) {
+// Makes the exported drawing self-contained for other programs: no CSS rules (they override each path's own fill),
+// no browser-only attributes, and every line weight written out on the element itself.
+function portableSvg(svgEl) {
+  const widths = { 'c-structure': '.72', 'c-detail': '.36', 'c-dashed': '.36', 'c-fine': '.12', 'c-hatch': '.12' };
+  for (const e of svgEl.querySelectorAll('path')) {
+    const cls = (e.getAttribute('class') || '').split(/\s+/);
+    if (!e.hasAttribute('fill')) e.setAttribute('fill', 'none');
+    if (cls.includes('c-fills') || cls.includes('c-text')) e.setAttribute('stroke', 'none');
+    for (const c of cls) if (widths[c]) e.setAttribute('stroke-width', widths[c]);
+    e.setAttribute('stroke-linecap', 'round'); e.setAttribute('stroke-linejoin', 'round');
+  }
+  for (const e of svgEl.querySelectorAll('.note')) { e.setAttribute('fill', '#1d4ed8'); e.setAttribute('font-family', 'Arial,sans-serif'); }
+  for (const st of [...svgEl.querySelectorAll('style')]) st.remove();
+  for (const e of svgEl.querySelectorAll('*')) for (const a of ['vector-effect', 'pointer-events', 'style']) e.removeAttribute(a);
+}
+function buildExportSvg(scale, forPdf, physical) {
   const b = visibleBox(), pad = 20;
   const clone = world.cloneNode(true);
   clone.removeAttribute('transform'); clone.removeAttribute('id');
@@ -2414,7 +2429,8 @@ function buildExportSvg(scale, forPdf) {
   const w = b[2] - b[0] + 2 * pad, h = b[3] - b[1] + 2 * pad;
   const out = el('svg', { xmlns: SVGNS, viewBox: `${b[0] - pad} ${b[1] - pad} ${w} ${h}` });
   if (scale) { out.setAttribute('width', Math.round(w * scale)); out.setAttribute('height', Math.round(h * scale)); }
-  out.appendChild(el('style', {}, 'path{fill:none;stroke-linecap:round;stroke-linejoin:round}.c-structure{stroke-width:.72}.c-detail,.c-dashed{stroke-width:.36}.c-fine,.c-hatch{stroke-width:.12}.c-fills,.c-text{stroke:none}.note{fill:#1d4ed8;font-family:Arial,sans-serif}'));
+  if (physical) { out.setAttribute('width', (w * 25.4 / 72).toFixed(1) + 'mm'); out.setAttribute('height', (h * 25.4 / 72).toFixed(1) + 'mm'); }      // the sheet's real size, so other programs open it at the right scale
+  out.appendChild(el('title', {}, ($('ver-name').value.trim() || st.filename.replace(/\.pdf$/i, '') || 'Plan') + ' (page ' + st.page + ')'));
   if (scale) out.appendChild(el('rect', { x: b[0] - pad, y: b[1] - pad, width: w, height: h, fill: '#fff' }));
   out.appendChild(clone);
   const ov = el('g');
@@ -2425,6 +2441,7 @@ function buildExportSvg(scale, forPdf) {
   }
   out.appendChild(ov);
   plainColours(ov, forPdf);
+  portableSvg(out);
   return { svg: out, w, h };
 }
 // File names carry the plan, page, version name and date, so saved versions can be told apart.
@@ -2443,7 +2460,7 @@ function download(blob, name) {
 }
 $('dl-svg').onclick = () => {
   if (!st.scene) return;
-  download(new Blob([new XMLSerializer().serializeToString(buildExportSvg().svg)], { type: 'image/svg+xml' }), exportName('.svg', 'clean'));
+  download(new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(buildExportSvg(0, false, true).svg)], { type: 'image/svg+xml' }), exportName('.svg', 'clean'));
 };
 $('dl-markup-pdf').onclick = async () => {
   if (!st.scene) return;
