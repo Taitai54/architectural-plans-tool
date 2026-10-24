@@ -329,3 +329,16 @@ def test_white_out_mark_is_accepted(client):
     mask = {"id": "w1", "type": "mask", "color": "#ffffff", "width": 1, "pts": [{"x": 10, "y": 10}, {"x": 90, "y": 40}]}
     assert client.put(url, json={"marks": [mask]}).status_code == 200
     assert client.get(f"/api/jobs/{jid}/pages/1").json()["state"]["marks"][0]["type"] == "mask"
+
+
+def test_rectangle_and_wrapped_text_marks(client):
+    jid = upload(client, plan_pdf()).json()["job_id"]
+    url = f"/api/jobs/{jid}/pages/1/state"
+    marks = [
+        {"id": "r1", "type": "rect", "color": "#dc2626", "width": 2, "size": 12, "pts": [{"x": 10, "y": 10}, {"x": 90, "y": 40}]},
+        {"id": "t1", "type": "text", "color": "#1d4ed8", "size": 14, "box": 120, "text": "A long note\nover two paragraphs", "pts": [{"x": 5, "y": 5}]},
+    ]
+    assert client.put(url, json={"marks": marks}).status_code == 200
+    got = client.get(f"/api/jobs/{jid}/pages/1").json()["state"]["marks"]
+    assert [m["type"] for m in got] == ["rect", "text"] and got[1]["box"] == 120
+    assert client.put(url, json={"marks": [dict(marks[1], box=-1)]}).status_code == 422

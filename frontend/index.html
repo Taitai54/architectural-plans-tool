@@ -78,7 +78,7 @@
   #hud { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: #444; background: rgba(255,255,255,.9); padding: 4px 8px; border-radius: 5px; border: 1px solid #e0e0e8; display: none; }
   #stage.marking { cursor: crosshair; }
   #stage.erasing { cursor: none; }
-  #mk-textbox { position: absolute; display: none; z-index: 5; border: 1px dashed #1d4ed8; background: rgba(255,255,255,.92); padding: 1px 3px; font-family: Arial, sans-serif; outline: none; min-width: 120px; }
+  #mk-textbox { position: absolute; display: none; z-index: 5; border: 1px dashed #1d4ed8; background: rgba(255,255,255,.92); padding: 1px 3px; font-family: Arial, sans-serif; outline: none; min-width: 60px; resize: horizontal; overflow: hidden; line-height: 1.2; }
   .markbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 14px; background: #f4f6ff; border-bottom: 1px solid #dbe4ff; flex-shrink: 0; font-size: 12px; }
   .markbar[hidden] { display: none; }
   .markbar strong { margin-right: 4px; color: #1a1a2e; }
@@ -261,10 +261,12 @@
       <button class="btn" id="mk-delete" title="Delete what is selected (Delete key, or the red ✕ beside it)" disabled>🗑 Delete</button>
       <button class="btn" id="mk-pen" title="Draw freehand (B)">✎ Pen</button>
       <button class="btn" id="mk-arrow" title="Drag from the tail to the point (A)">➚ Arrow</button>
-      <button class="btn" id="mk-text" title="Click on the plan and type (T)">T Text</button>
+      <button class="btn" id="mk-text" title="Click and type, or drag a box first to set its width (T)">T Text</button>
+      <button class="btn" id="mk-rect" title="Drag a rectangle; it shows its size and area in m² and sq ft">⬜ Rectangle</button>
       <button class="btn" id="mk-erase" title="Drag over markup to rub it out (E)">⌫ Eraser</button>
       <button class="btn" id="mk-white" title="Drag a box to paint over lines of the PDF itself (W). The PDF is not changed; delete the box to bring the lines back.">▯ White-out</button>
-      <button class="btn" id="mk-undo" title="Undo the last markup change (Ctrl+Z)">↶ Undo</button>
+      <button class="btn" id="mk-undo" title="Undo (Ctrl+Z, Cmd+Z on a Mac)">↶ Undo</button>
+      <button class="btn" id="mk-redo" title="Redo (Ctrl+Y or Ctrl+Shift+Z)">↷ Redo</button>
       <span class="swatches" id="mk-colors" style="margin:0 0 0 6px"></span>
       <span class="chips" id="mk-sizes" style="margin:0 0 0 6px"></span>
       <span class="mk-tip" id="mk-tip">Pick a tool, then click or drag on the plan.</span>
@@ -274,7 +276,7 @@
       <div class="placeholder" id="placeholder"><h3>No plan loaded</h3><p>Upload a vector PDF plan on the left.<br>It is converted into classified geometry you can declutter and measure.</p></div>
       <svg id="svg" xmlns="http://www.w3.org/2000/svg" style="display:none"><g id="world"></g><g id="overlay"></g></svg>
       <div id="hud"></div>
-      <input type="text" id="mk-textbox" maxlength="500" placeholder="Type, then Enter">
+      <textarea id="mk-textbox" maxlength="500" rows="1" placeholder="Type, then Enter (Shift+Enter for a new line)"></textarea>
     </div>
     <div id="chat">
       <div id="chat-log"></div>
@@ -322,15 +324,15 @@ const st = {
   options: [], activeOption: null, showProposals: true, showRejected: false,
   marks: [],             // { id, type: 'pen'|'arrow'|'text', color, width, size, text, pts: [[x,y],...] }  (width/size in PDF points)
   group: null, marquee: null,   // group: { marks: [ids], pins: [ids], items: [ids] } picked with box select
-  selMark: null, mkColor: '#dc2626', mkSize: 1, markUndo: [],
+  selMark: null, mkColor: '#dc2626', mkSize: 1, markUndo: [], markRedo: [],
   clip: null, pasteN: 0, // copied furniture item
 };
-const MARK_MODES = ['pen', 'arrow', 'text', 'erase', 'white'];
+const MARK_MODES = ['pen', 'arrow', 'text', 'erase', 'white', 'rect'];
 const TOOL_MODES = MARK_MODES.concat('box');
 const MK_COLORS = ['#dc2626', '#1d4ed8', '#059669', '#d97706', '#111827'];
 const MK_SIZES = [{ name: 'Fine', px: 2, text: 12 }, { name: 'Medium', px: 4, text: 16 }, { name: 'Bold', px: 7, text: 24 }];
 const ERASE_PX = 10;
-const MK_TIPS = { pen: 'Pen: press and drag on the plan to draw.', arrow: 'Arrow: press at the tail and drag to the point.', text: 'Text: click where the text should go, type, press Enter.', erase: 'Eraser: drag over drawings, arrows or text to rub them out.', white: 'White-out: drag a box over lines of the PDF you want hidden. Delete the box (Select, click its edge, Delete) to bring them back.', box: 'Box select: drag a rectangle around the pins, drawings, text or furniture you want. Then drag them or press Delete.', none: 'Select: click a pin, drawing, text or furniture, then drag it or press Delete. Drag empty space to pan.' };
+const MK_TIPS = { pen: 'Pen: press and drag on the plan to draw.', arrow: 'Arrow: press at the tail and drag to the point.', text: 'Text: click where it should go and type (Enter to finish, Shift+Enter for a new line). Drag a box first to set the wrapping width.', rect: 'Rectangle: drag to draw it. The size and area appear as you drag.', erase: 'Eraser: drag over drawings, arrows or text to rub them out.', white: 'White-out: drag a box over lines of the PDF you want hidden. Delete the box (Select, click its edge, Delete) to bring them back.', box: 'Box select: drag a rectangle around the pins, drawings, text or furniture you want. Then drag them or press Delete.', none: 'Select: click a pin, drawing, text or furniture, then drag it or press Delete. Drag empty space to pan.' };
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function el(name, attrs = {}, text) {
@@ -463,7 +465,7 @@ async function loadPage(n) {
   st.page = n; st.scene = scene;
   applyState(st.scene.state || {});
   st.selected = null; st.pending = []; st.calib = null; st.roomPts = []; setMode(null);
-  st.markUndo = []; st.selMark = null; st.group = null;
+  st.markUndo = []; st.markRedo = []; st.selMark = null; st.group = null;
   chat.log = []; renderChat(); $('chat').classList.add('visible');
   st.candidates = []; renderCandidates();
   st.catOn = { ...CLEAN, text: 0 }; st.tidyOn = true;
@@ -1766,7 +1768,7 @@ function statePayload() {
     rooms: st.rooms.map(r => ({ id: r.id, name: r.name, poly: r.poly.map(pt) })),
     items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: clampNum(i.w, 1, 50000), d: clampNum(i.d, 1, 50000), clear: clampNum(i.clear, 0, 10000), option: i.option, status: i.status, source: i.source || 'user', note: i.note || '', label: i.label || '', replaces: i.replaces || '', x: i.x, y: i.y, rot: i.rot || 0 })),
     measures: st.measures.map(m => ({ a: pt(m.a), b: pt(m.b) })),
-    marks: st.marks.map(m => ({ id: m.id, type: m.type, color: m.color, width: m.width, size: m.size, text: m.text || '', pts: m.pts.map(pt) })),
+    marks: st.marks.map(m => ({ id: m.id, type: m.type, color: m.color, width: m.width, size: m.size, text: m.text || '', box: m.box || 0, pts: m.pts.map(pt) })),
     custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: clampNum(c.w, 1, 50000), d: clampNum(c.d, 1, 50000), clear: clampNum(c.clear, 0, 10000) })),
   };
 }
@@ -1817,7 +1819,7 @@ function hitAny(x, y) {          // what is under the pointer: { kind, obj } or 
   return null;
 }
 const inGroup = (kind, id) => !!st.group && st.group[kind].includes(id);
-function pointsOf(m) { return m.type === 'text' ? [m.pts[0], [textBox(m)[2], m.pts[0][1]]] : m.type === 'mask' ? [[(m.pts[0][0] + m.pts[1][0]) / 2, (m.pts[0][1] + m.pts[1][1]) / 2]] : m.pts; }
+function pointsOf(m) { return m.type === 'text' ? [m.pts[0], [textBox(m)[2], m.pts[0][1]]] : (m.type === 'mask' || m.type === 'rect') ? [[(m.pts[0][0] + m.pts[1][0]) / 2, (m.pts[0][1] + m.pts[1][1]) / 2]] : m.pts; }
 function boxSelect(a, b) {
   const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
   const inside = (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
@@ -1891,18 +1893,28 @@ function snapKeys(keys) {
   return JSON.stringify(o);
 }
 const markSnapshot = () => snapKeys(['marks']);
-function pushUndoSnap(snap) { st.markUndo.push(snap); if (st.markUndo.length > 60) st.markUndo.shift(); }
+function pushUndoSnap(snap) { st.markUndo.push(snap); if (st.markUndo.length > 60) st.markUndo.shift(); st.markRedo = []; }
 function pushMarkUndo() { pushUndoSnap(markSnapshot()); }
 function restoreSnap(snap) {
   const o = JSON.parse(snap);
   for (const k in o) st[k] = k === 'measures' ? o.measures.map(m => ({ ...m, view: viewAt(m.a[0], m.a[1]) })) : o[k];
 }
-function undoMark() {
-  if (!st.markUndo.length) return;
-  restoreSnap(st.markUndo.pop());
+function afterRestore() {
   st.group = null; st.selected = null; st.selectedPin = null;
   if (!st.marks.some(m => m.id === st.selMark)) st.selMark = null;
   renderRooms(); renderMeasures(); renderSelected(); renderOptions(); renderReview(); markChanged();
+}
+function undoMark() {
+  if (!st.markUndo.length) return;
+  const snap = st.markUndo.pop();
+  st.markRedo.push(snapKeys(Object.keys(JSON.parse(snap))));      // what is there now, so Redo can put it back
+  restoreSnap(snap); afterRestore();
+}
+function redoMark() {
+  if (!st.markRedo.length) return;
+  const snap = st.markRedo.pop();
+  st.markUndo.push(snapKeys(Object.keys(JSON.parse(snap))));
+  restoreSnap(snap); afterRestore();
 }
 function markChanged() { scheduleSave(); renderMarkPanel(); renderMarkTools(); renderOverlay(); }
 function distSeg(px, py, ax, ay, bx, by) {
@@ -1910,9 +1922,32 @@ function distSeg(px, py, ax, ay, bx, by) {
   const t = L ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
-function textBox(m) { const [x, y] = m.pts[0]; return [x, y - m.size, x + Math.max(1, m.text.length) * m.size * 0.58, y + m.size * 0.3]; }
+function layoutText(m) {         // lines of a text note: wrapped to its box width, or as typed when the box is 0
+  const per = m.box > 0 ? Math.max(1, Math.floor(m.box / (m.size * 0.56))) : 0, lines = [];
+  for (const para of String(m.text).split('\n')) {
+    if (!para.trim()) lines.push('');
+    else if (per) lines.push(...wrapText(para, per, 999));
+    else lines.push(para);
+  }
+  const longest = Math.max(1, ...lines.map(l => l.length));
+  return { lines, w: m.box > 0 ? m.box : longest * m.size * 0.58, h: lines.length * m.size * 1.2 };
+}
+function textBox(m) { const [x, y] = m.pts[0], L = layoutText(m); return [x, y - m.size, x + L.w, y - m.size + L.h + m.size * 0.2]; }
+const SQFT = 10.763910417;
+function rectInfo(m) {
+  const [a, b] = m.pts, s = mmPerPtAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+  if (!s) return null;
+  const w = Math.abs(a[0] - b[0]) * s / 1000, h = Math.abs(a[1] - b[1]) * s / 1000;
+  return { w, h, area: w * h, sqft: w * h * SQFT };
+}
+const fmtRect = i => i ? [`${i.w.toFixed(2)} × ${i.h.toFixed(2)} m`, `${i.area.toFixed(1)} m² (${Math.round(i.sqft)} sq ft)`] : ['set the scale to see the area'];
 function markHit(m, x, y, tol) {
   if (m.type === 'mask') { const [a, b] = m.pts; return x >= Math.min(a[0], b[0]) - tol && x <= Math.max(a[0], b[0]) + tol && y >= Math.min(a[1], b[1]) - tol && y <= Math.max(a[1], b[1]) + tol; }
+  if (m.type === 'rect') {
+    const [a, b] = m.pts, x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]), r = tol + m.width / 2;
+    const near = Math.min(distSeg(x, y, x0, y0, x1, y0), distSeg(x, y, x1, y0, x1, y1), distSeg(x, y, x1, y1, x0, y1), distSeg(x, y, x0, y1, x0, y0)) <= r;
+    return near || (Math.abs(x - (x0 + x1) / 2) <= m.size * 5 && Math.abs(y - (y0 + y1) / 2) <= m.size * 1.4);      // the outline, or the size label
+  }
   if (m.type === 'text') { const b = textBox(m); return x >= b[0] - tol && x <= b[2] + tol && y >= b[1] - tol && y <= b[3] + tol; }
   const r = tol + m.width / 2;
   if (m.pts.length === 1) return Math.hypot(x - m.pts[0][0], y - m.pts[0][1]) <= r;
@@ -1953,10 +1988,17 @@ function drawMarks(g, k) {
     const common = { 'pointer-events': 'none' };
     if (sel) {
       if (m.type === 'text') { const b = textBox(m); g.appendChild(el('rect', { x: b[0] - 3 / k, y: b[1] - 3 / k, width: b[2] - b[0] + 6 / k, height: b[3] - b[1] + 6 / k, fill: 'rgba(29,78,216,.08)', stroke: '#1d4ed8', 'stroke-width': 1, 'stroke-dasharray': '4 3', 'vector-effect': 'non-scaling-stroke', ...common })); }
+      else if (m.type === 'rect') { const [a, b] = m.pts; g.appendChild(el('rect', { x: Math.min(a[0], b[0]), y: Math.min(a[1], b[1]), width: Math.abs(a[0] - b[0]), height: Math.abs(a[1] - b[1]), fill: 'none', stroke: '#1d4ed8', 'stroke-opacity': 0.35, 'stroke-width': m.width + 8 / k, ...common })); }
       else g.appendChild(el('polyline', { points: m.pts.map(q => q.join(',')).join(' '), fill: 'none', stroke: '#1d4ed8', 'stroke-opacity': 0.35, 'stroke-width': m.width + 8 / k, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...common }));
     }
     if (m.type === 'text') {
-      g.appendChild(el('text', { x: m.pts[0][0], y: m.pts[0][1], 'font-size': m.size, fill: m.color, 'font-family': 'Arial,sans-serif', 'font-weight': 700, stroke: '#fff', 'stroke-width': m.size / 5, 'paint-order': 'stroke', ...common }, m.text));
+      layoutText(m).lines.forEach((ln, i) => { if (ln) g.appendChild(el('text', { x: m.pts[0][0], y: m.pts[0][1] + i * m.size * 1.2, 'font-size': m.size, fill: m.color, 'font-family': 'Arial,sans-serif', 'font-weight': 700, stroke: '#fff', 'stroke-width': m.size / 5, 'paint-order': 'stroke', ...common }, ln)); });
+      if (sel && m.id === st.selMark && g === overlay) { const b = textBox(m), hs = 8 / k; g.appendChild(el('rect', { x: b[2] - hs / 2, y: (b[1] + b[3]) / 2 - hs / 2, width: hs, height: hs, fill: '#fff', stroke: '#1d4ed8', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke', style: 'cursor:ew-resize' })); }
+    } else if (m.type === 'rect') {
+      const [a, b] = m.pts, x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]), w = Math.abs(a[0] - b[0]), h = Math.abs(a[1] - b[1]), fs = m.size;
+      g.appendChild(el('rect', { x, y, width: w, height: h, fill: m.color, 'fill-opacity': 0.08, stroke: m.color, 'stroke-width': m.width, 'stroke-linejoin': 'round', ...common }));
+      const lines = fmtRect(rectInfo(m)), cy = y + h / 2 - (lines.length - 1) * fs * 0.6;
+      lines.forEach((ln, i) => g.appendChild(el('text', { x: x + w / 2, y: cy + i * fs * 1.2 + fs * 0.35, 'font-size': fs, 'text-anchor': 'middle', fill: m.color, 'font-family': 'Arial,sans-serif', 'font-weight': 700, stroke: '#fff', 'stroke-width': fs / 5, 'paint-order': 'stroke', ...common }, ln)));
     } else if (m.type === 'arrow' && m.pts.length > 1) {
       const [a, b] = m.pts, len = Math.hypot(b[0] - a[0], b[1] - a[1]);
       if (len < 1e-6) continue;
@@ -1978,17 +2020,18 @@ function deleteMark(id) { pushMarkUndo(); st.marks = st.marks.filter(m => m.id !
 function startMark(wx, wy) {       // returns the in-progress drag state for the pen, arrow and eraser
   const mkSz = MK_SIZES[st.mkSize], k = st.view.k;
   if (st.mode === 'erase') { const d = { kind: 'erase', undone: false }; eraseAt(d, wx, wy); return d; }
-  if (st.mode !== 'pen' && st.mode !== 'arrow' && st.mode !== 'white') return null;
+  if (st.mode !== 'pen' && st.mode !== 'arrow' && st.mode !== 'white' && st.mode !== 'rect') return null;
   pushMarkUndo();
   const m = { id: uid(), type: st.mode, color: st.mkColor, width: mkSz.px / k, size: mkSz.text / k, text: '', pts: st.mode === 'pen' ? [[wx, wy]] : [[wx, wy], [wx, wy]] };
   if (st.mode === 'white') m.type = 'mask';
+  if (st.mode === 'rect') m.width = Math.max(m.width, 1.5 / k);
   st.marks.push(m);
   return { kind: 'draw', m };
 }
 function extendMark(d, wx, wy) {
   if (d.kind === 'erase') { eraseAt(d, wx, wy); return; }
   const m = d.m;
-  if (m.type === 'arrow' || m.type === 'mask') m.pts[1] = [wx, wy];
+  if (m.type === 'arrow' || m.type === 'mask' || m.type === 'rect') { m.pts[1] = [wx, wy]; if (m.type === 'rect') $('mk-tip').textContent = fmtRect(rectInfo(m)).join('  ·  '); }
   else { const l = m.pts[m.pts.length - 1]; if (Math.hypot(wx - l[0], wy - l[1]) * st.view.k >= 1.5) m.pts.push([wx, wy]); }
   renderOverlay();
 }
@@ -2006,7 +2049,7 @@ function eraseAt(d, wx, wy) {
 function finishMark(d) {
   if (d.kind === 'erase') { if (d.removed) markChanged(); else renderOverlay(); return; }
   const m = d.m;
-  if ((m.type === 'arrow' || m.type === 'mask') && Math.hypot(m.pts[1][0] - m.pts[0][0], m.pts[1][1] - m.pts[0][1]) * st.view.k < 4) { st.marks.pop(); st.markUndo.pop(); renderOverlay(); return; }   // a click, not an arrow
+  if ((m.type === 'arrow' || m.type === 'mask' || m.type === 'rect') && Math.hypot(m.pts[1][0] - m.pts[0][0], m.pts[1][1] - m.pts[0][1]) * st.view.k < 4) { st.marks.pop(); st.markUndo.pop(); renderOverlay(); return; }   // a click, not an arrow
   if (m.type === 'pen') { m.pts = simplify(m.pts, 0.6 / st.view.k); if (m.pts.length > 3000) m.pts = m.pts.filter((_, i) => i % Math.ceil(m.pts.length / 3000) === 0); }
   markChanged();
 }
@@ -2018,23 +2061,26 @@ function cancelMark(d) {
 const tb = $('mk-textbox');
 let textAt = null;
 function cancelText() { if (!textAt) return; textAt = null; tb.style.display = 'none'; tb.value = ''; }
-function startText(x, y, existing) {
+function growTextbox() { tb.style.height = 'auto'; tb.style.height = tb.scrollHeight + 'px'; }
+function startText(x, y, boxW) {      // x, y: where the first line sits; boxW: wrapping width in points (0 = no wrapping)
   cancelText();
-  const px = MK_SIZES[st.mkSize].text, { k, tx, ty } = st.view;
-  textAt = { x, y, size: px / k, color: st.mkColor, existing };
-  Object.assign(tb.style, { display: 'block', left: (x * k + tx) + 'px', top: (y * k + ty - px) + 'px', fontSize: px + 'px', color: st.mkColor });
-  tb.value = ''; tb.focus();
+  const px = MK_SIZES[st.mkSize].text, { k, tx, ty } = st.view, w0 = boxW > 0 ? Math.max(60, boxW * k) : 180;
+  textAt = { x, y, size: px / k, color: st.mkColor, w0, sized: boxW > 0 };
+  Object.assign(tb.style, { display: 'block', left: (x * k + tx) + 'px', top: (y * k + ty - px) + 'px', fontSize: px + 'px', color: st.mkColor, width: w0 + 'px', height: 'auto' });
+  tb.value = ''; tb.focus(); growTextbox();
 }
 function commitText() {
   if (!textAt) return;
-  const t = tb.value.trim(), a = textAt; cancelText();
+  const t = tb.value.trim(), a = textAt, w = tb.offsetWidth; cancelText();
   if (!t) return;
   pushMarkUndo();
-  const m = { id: uid(), type: 'text', color: a.color, width: 1, size: a.size, text: t.slice(0, 500), pts: [[a.x, a.y]] };
+  const box = a.sized || Math.abs(w - a.w0) > 4 ? w / st.view.k : 0;      // a box you drew or stretched wraps; a plain click does not
+  const m = { id: uid(), type: 'text', color: a.color, width: 1, size: a.size, box, text: t.slice(0, 500), pts: [[a.x, a.y]] };
   st.marks.push(m); st.selMark = null;
   markChanged();
 }
-tb.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitText(); } else if (e.key === 'Escape') { e.preventDefault(); cancelText(); } });
+tb.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitText(); } else if (e.key === 'Escape') { e.preventDefault(); cancelText(); } });
+tb.addEventListener('input', growTextbox);
 tb.addEventListener('blur', commitText);
 
 function renderMarkTools() {
@@ -2052,6 +2098,7 @@ function renderMarkTools() {
     z.appendChild(b);
   });
   $('mk-undo').disabled = !st.markUndo.length;
+  $('mk-redo').disabled = !st.markRedo.length;
 }
 function renderMarkPanel() {
   const box = $('mk-selected'); box.textContent = '';
@@ -2059,20 +2106,32 @@ function renderMarkPanel() {
   if (!m) return;
   const wrap = document.createElement('div'); wrap.className = 'sel-box';
   const t = document.createElement('div'); t.className = 'hint'; t.style.margin = '0 0 6px';
-  t.textContent = `Selected ${m.type === 'pen' ? 'pen stroke' : m.type === 'mask' ? 'white-out box' : m.type}. Drag it to move it; pick a colour above to recolour it.`;
+  t.textContent = `Selected ${m.type === 'pen' ? 'pen stroke' : m.type === 'mask' ? 'white-out box' : m.type === 'rect' ? 'rectangle' : m.type}. Drag it to move it; pick a colour above to recolour it.`;
   wrap.appendChild(t);
   if (m.type === 'text') {
     const row = document.createElement('div'); row.className = 'row';
-    const i = document.createElement('input'); i.className = 'field'; i.type = 'text'; i.value = m.text; i.maxLength = 500; i.style.flex = 1;
+    const i = document.createElement('textarea'); i.className = 'field'; i.value = m.text; i.maxLength = 500; i.rows = 3; i.style.flex = 1;
     i.onchange = () => { if (!i.value.trim()) return; pushMarkUndo(); m.text = i.value.trim(); markChanged(); };
     row.appendChild(i); wrap.appendChild(row);
+    const tools = document.createElement('div'); tools.className = 'btns';
+    const tb2 = (label, title, fn) => { const x = document.createElement('button'); x.className = 'btn'; x.textContent = label; x.title = title; x.onclick = () => { pushMarkUndo(); fn(); markChanged(); }; tools.appendChild(x); };
+    const L0 = () => layoutText(m).w;
+    tb2('A−', 'Smaller text', () => { const f = 0.85, w = L0(); m.size *= f; if (m.box > 0) m.box = w * f; });
+    tb2('A+', 'Bigger text', () => { const f = 1 / 0.85, w = L0(); m.size *= f; if (m.box > 0) m.box = w * f; });
+    tb2('◂ Narrower', 'Wrap the text in a narrower box', () => { m.box = Math.max(m.size * 3, L0() * 0.8); });
+    tb2('Wider ▸', 'Wrap the text in a wider box', () => { m.box = L0() * 1.25; });
+    tb2('No wrap', 'One line per paragraph, no wrapping', () => { m.box = 0; });
+    wrap.appendChild(tools);
+    const hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = 'You can also drag the white square on the right edge of the text to set its width.'; wrap.appendChild(hint);
   }
+  if (m.type === 'rect') { const d = document.createElement('div'); d.className = 'stat'; d.style.fontWeight = '700'; d.textContent = fmtRect(rectInfo(m)).join('  ·  '); wrap.appendChild(d); }
   const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'Delete mark'; b.onclick = () => deleteMark(m.id);
   const r = document.createElement('div'); r.className = 'btns'; r.appendChild(b); wrap.appendChild(r);
   box.appendChild(wrap);
 }
-for (const [id, mode] of [['mk-pen', 'pen'], ['mk-arrow', 'arrow'], ['mk-text', 'text'], ['mk-erase', 'erase'], ['mk-white', 'white']]) $(id).onclick = () => setMode(st.mode === mode ? null : mode);
+for (const [id, mode] of [['mk-pen', 'pen'], ['mk-arrow', 'arrow'], ['mk-text', 'text'], ['mk-erase', 'erase'], ['mk-white', 'white'], ['mk-rect', 'rect']]) $(id).onclick = () => setMode(st.mode === mode ? null : mode);
 $('mk-undo').onclick = undoMark;
+$('mk-redo').onclick = redoMark;
 $('mk-select').onclick = () => setMode(null);
 
 // ── copy, cut and paste furniture ──────────────────────────────────────────
@@ -2147,13 +2206,16 @@ let drag = null;
 svg.addEventListener('pointerdown', e => {
   if (!st.scene) return;
   svg.setPointerCapture(e.pointerId);
-  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null, mark: null, markMove: null, box: null, groupMove: null, button: e.button };
+  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null, mark: null, markMove: null, box: null, groupMove: null, tbox: null, textResize: null, button: e.button };
   if (e.button !== 0) return;               // right and middle buttons only pan
   if (st.mode === 'measure' && st.pending.length === 0) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.ruler = snap(wx, wy).p; }
-  if (st.mode === 'pen' || st.mode === 'arrow' || st.mode === 'erase' || st.mode === 'white') { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.mark = startMark(wx, wy); return; }
+  if (st.mode === 'pen' || st.mode === 'arrow' || st.mode === 'erase' || st.mode === 'white' || st.mode === 'rect') { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.mark = startMark(wx, wy); return; }
   if (st.mode === 'box') { drag.box = { a: screenToWorld(e.clientX, e.clientY) }; return; }
+  if (st.mode === 'text') { drag.tbox = { a: screenToWorld(e.clientX, e.clientY) }; return; }
   if (!st.mode) {
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+    const tm = st.marks.find(x => x.id === st.selMark && x.type === 'text');
+    if (tm) { const b = textBox(tm); if (Math.hypot(b[2] - wx, (b[1] + b[3]) / 2 - wy) * st.view.k <= 10) { drag.textResize = { m: tm, undone: false }; return; } }
     const badge = deleteBadge();
     if (badge && Math.hypot(badge[0] - wx, badge[1] - wy) * st.view.k <= 11) { deleteAnySelected(); drag.noop = true; return; }
     if (st.group || e.shiftKey) {          // pressing on something in the group drags the whole group; shift adds or removes; elsewhere clears it
@@ -2184,6 +2246,11 @@ svg.addEventListener('pointermove', e => {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(dx, dy) > 4) drag.moved = true;
     if (drag.box) { st.marquee = [drag.box.a, screenToWorld(e.clientX, e.clientY)]; renderOverlay(); return; }
+    if (drag.tbox) { if (drag.moved) { st.marquee = [drag.tbox.a, screenToWorld(e.clientX, e.clientY)]; renderOverlay(); } return; }
+    if (drag.textResize) {
+      if (drag.moved) { const tr = drag.textResize, [wx, wy] = screenToWorld(e.clientX, e.clientY); if (!tr.undone) { pushMarkUndo(); tr.undone = true; } tr.m.box = Math.max(tr.m.size * 3, wx - tr.m.pts[0][0]); renderOverlay(); }
+      return;
+    }
     if (drag.groupMove) {
       if (drag.moved) {
         const gm = drag.groupMove, [wx, wy] = screenToWorld(e.clientX, e.clientY);
@@ -2229,9 +2296,17 @@ svg.addEventListener('pointermove', e => {
 svg.addEventListener('pointerup', e => {
   if (!drag) return;                         // the press did not start on the plan (e.g. a chip or item dropped here)
   if (drag.button !== 0) { drag = null; return; }
-  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin), ruler = drag && drag.ruler, mkDrag = drag && drag.mark, mkMove = drag && drag.markMove, boxD = drag && drag.box, groupD = drag && drag.groupMove, clearG = drag && drag.clearGroup, noop = drag && drag.noop; drag = null;
+  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin), ruler = drag && drag.ruler, mkDrag = drag && drag.mark, mkMove = drag && drag.markMove, boxD = drag && drag.box, tboxD = drag && drag.tbox, trD = drag && drag.textResize, groupD = drag && drag.groupMove, clearG = drag && drag.clearGroup, noop = drag && drag.noop; drag = null;
   if (!st.scene) return;
   if (noop) return;
+  if (tboxD) {
+    st.marquee = null; renderOverlay();
+    const end = screenToWorld(e.clientX, e.clientY), sz = MK_SIZES[st.mkSize].text / st.view.k;
+    if (wasDrag && Math.abs(end[0] - tboxD.a[0]) * st.view.k > 12) startText(Math.min(end[0], tboxD.a[0]), Math.min(end[1], tboxD.a[1]) + sz, Math.abs(end[0] - tboxD.a[0]));
+    else startText(tboxD.a[0], tboxD.a[1], 0);
+    return;
+  }
+  if (trD) { if (trD.undone) markChanged(); return; }
   if (boxD) {
     const end = screenToWorld(e.clientX, e.clientY), tiny = Math.hypot(end[0] - boxD.a[0], end[1] - boxD.a[1]) * st.view.k < 4;
     st.marquee = null; const g = tiny ? null : boxSelect(boxD.a, end);
@@ -2269,6 +2344,8 @@ svg.addEventListener('pointerup', e => {
 svg.addEventListener('pointercancel', () => {
   const moved = drag && drag.moved && (drag.item || drag.handle || drag.pin);
   if (drag && drag.mark) cancelMark(drag.mark);
+  if (drag && drag.textResize && drag.textResize.undone) { restoreSnap(st.markUndo.pop()); }
+  st.marquee = null;
   if (drag && drag.markMove && drag.markMove.undone) { restoreSnap(st.markUndo.pop()); }
   drag = null; st.pending = []; st.hover = null; renderOverlay();
   if (moved) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); }
@@ -2282,7 +2359,8 @@ window.addEventListener('keydown', e => {
     if (key === 'c' && sel) { e.preventDefault(); copySelected(false); }
     else if (key === 'x' && sel) { e.preventDefault(); copySelected(true); }
     else if (key === 'v' && st.clip) { e.preventDefault(); pasteClip(); }
-    else if (key === 'z') { e.preventDefault(); undoMark(); }
+    else if (key === 'z') { e.preventDefault(); if (e.shiftKey) redoMark(); else undoMark(); }
+    else if (key === 'y') { e.preventDefault(); redoMark(); }
     return;
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -2308,7 +2386,7 @@ window.addEventListener('resize', () => { if (st.scene) applyView(); });
 // ── export ─────────────────────────────────────────────────────────────────
 $('dl-pdf').onclick = () => { if (st.jobId) location.href = `/api/jobs/${st.jobId}/original.pdf`; };
 // PDF converters ignore rgba() colours and paint-order, which turned translucent blocks black and hid text under its outline.
-function plainColours(root) {
+function plainColours(root, noHalo) {
   const hex = n => Math.round(+n).toString(16).padStart(2, '0');
   const rgba = /^rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/;
   for (const e of root.querySelectorAll('*')) {
@@ -2318,6 +2396,7 @@ function plainColours(root) {
     }
   }
   for (const t of [...root.querySelectorAll('text[paint-order]')]) {       // outline first, then the text on top
+    if (noHalo) { t.removeAttribute('paint-order'); t.removeAttribute('stroke'); t.removeAttribute('stroke-width'); continue; }   // PDF: one clean, selectable copy of each text
     const halo = t.cloneNode(true);
     halo.removeAttribute('paint-order'); halo.setAttribute('fill', t.getAttribute('stroke') || '#fff');
     t.removeAttribute('paint-order'); t.removeAttribute('stroke'); t.removeAttribute('stroke-width');
@@ -2325,7 +2404,7 @@ function plainColours(root) {
     t.parentNode.insertBefore(halo, t);
   }
 }
-function buildExportSvg(scale) {
+function buildExportSvg(scale, forPdf) {
   const b = visibleBox(), pad = 20;
   const clone = world.cloneNode(true);
   clone.removeAttribute('transform'); clone.removeAttribute('id');
@@ -2345,7 +2424,7 @@ function buildExportSvg(scale) {
     ov.appendChild(el('text', { x: (m.a[0] + m.b[0]) / 2, y: (m.a[1] + m.b[1]) / 2 - 3, 'font-size': 9, 'text-anchor': 'middle', fill: '#cc0000', 'font-family': 'Arial,sans-serif' }, lengthLabel(m.a, m.b, m.view)));
   }
   out.appendChild(ov);
-  plainColours(ov);
+  plainColours(ov, forPdf);
   return { svg: out, w, h };
 }
 // File names carry the plan, page, version name and date, so saved versions can be told apart.
@@ -2370,7 +2449,7 @@ $('dl-markup-pdf').onclick = async () => {
   if (!st.scene) return;
   try {
     status('file-status', 'loading', 'Making the PDF…', true);
-    const { svg: out } = buildExportSvg(1);       // 1 unit = 1 PDF point, so the page keeps the sheet's size
+    const { svg: out } = buildExportSvg(1, true);       // 1 unit = 1 PDF point, so the page keeps the sheet's size
     const res = await fetch('/api/svg-to-pdf', { method: 'POST', headers: { 'Content-Type': 'image/svg+xml' }, body: new XMLSerializer().serializeToString(out) });
     if (!res.ok) { let d = null; try { d = (await res.json()).detail; } catch (_) {} throw new Error(d || `Request failed (${res.status})`); }
     download(await res.blob(), exportName('.pdf', 'markup'));
@@ -2434,7 +2513,7 @@ $('open-input').onchange = async e => {
     await flushSave();
     await api(`/api/jobs/${st.jobId}/pages/${st.page}/state`, jsonPut(file.state));      // the server checks the file before anything changes on screen
     applyState(file.state);
-    st.selected = null; st.selMark = null; st.group = null; st.markUndo = []; st.candidates = []; setMode(null);
+    st.selected = null; st.selMark = null; st.group = null; st.markUndo = []; st.markRedo = []; st.candidates = []; setMode(null);
     renderCandidates(); renderSidebar(); renderOverlay();
     status('file-status', 'success', `Opened ${from}.`);
     status('upload-status', 'success', `Loaded ${st.filename}`);
