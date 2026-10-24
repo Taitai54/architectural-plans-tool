@@ -38,20 +38,26 @@ Upload an architectural PDF and turn it into structured, classified geometry you
 
 ## Setup
 
-Python 3.10+ is the only requirement.
+Python 3.10+ is the only requirement. The tool runs the same on Windows and macOS (and Linux).
 
-```bash
-./run.sh          # installs backend/requirements.txt and serves http://localhost:8000
-```
+| Computer | How to start it |
+|---|---|
+| **Windows** | Double-click `run.bat`. It installs the requirements, starts the server and opens the browser (Chrome if it is installed). |
+| **Mac** | Double-click `run.command` (or run `./run.sh` in Terminal). The first run sets up a private `.venv` folder, installs the requirements, starts the server and opens Chrome (or your default browser). |
 
-On Windows, double-click `run.bat` instead. It installs the requirements, starts the server and opens the browser.
+On a Mac, if you need Python: install it from https://www.python.org/downloads/ or run `brew install python`. The Python that comes with macOS is usually too old. If double-clicking `run.command` says it can't be opened (it was downloaded as a zip), right-click it, choose **Open**, or run `chmod +x run.command run.sh` once in Terminal.
 
-The server binds to 127.0.0.1 only. Uploaded plans and extraction results are stored in `backend/outputs/` (git-ignored).
+Both launchers close an old copy still running on port 8000, so an update always takes effect. The server binds to 127.0.0.1 only. Uploaded plans and extraction results are stored in `backend/outputs/` (git-ignored).
+
+Keyboard shortcuts that say Ctrl (Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+Z) use **Cmd** on a Mac. The key marked "delete" on a Mac keyboard deletes the selection, the same as Delete on a PC.
+
+Extras below install into the same Python the launcher uses: on Windows `pip install ...`; on a Mac `.venv/bin/python -m pip install ...` (from the project folder).
 
 ## OCR setup (room names and automatic scale)
 
 ```bash
 pip install -r backend/requirements-ocr.txt      # rapidocr-onnxruntime: pure pip, no system packages
+# Mac:  .venv/bin/python -m pip install -r backend/requirements-ocr.txt
 ```
 
 Without it, room detection still works but rooms are unnamed and the scale is not read. The first "Detect rooms" on a page reads the text (about 10 seconds for an A1 sheet) and caches it; later runs take about 3 seconds.
@@ -62,6 +68,7 @@ The demo parser works with no setup. For a real assistant, install the SDK for t
 
 ```bash
 pip install -r backend/requirements-ai.txt        # anthropic, openai, google-genai (install only what you need)
+# Mac:  .venv/bin/python -m pip install -r backend/requirements-ai.txt
 ```
 
 ```
