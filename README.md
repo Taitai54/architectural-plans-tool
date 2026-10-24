@@ -16,9 +16,14 @@ Upload an architectural PDF and turn it into structured, classified geometry you
 | Rooms | Draw a room by clicking its corners. Area, perimeter, furniture and free floor area are calculated at real scale; rename rooms in the sidebar. |
 | Furniture | Catalogue of typical appliances and furniture at true size (editable, plus custom items). Click to place, drag to move, R to rotate, arrow keys to nudge. A dashed zone shows working / door clearance. |
 | Copy, cut, paste | Select a block and press Ctrl+C / Ctrl+X, then Ctrl+V (or the buttons). Pastes step aside from the original; paste into another option or page to reuse a layout. |
+| Text notes | The Text tool: click and type, or drag a box first to set the width so the text wraps. Select a note to change its size (A−/A+), wrap it narrower or wider, or drag the white square on its right edge. Shift+Enter starts a new line. |
 | Text in blocks | Type free text in a block's "Text" field; it is written inside the block (wrapped), and goes into the schedule CSV. |
-| Markup | The "Draw & annotate" bar above the plan has Pen (B), Arrow (A), Text (T) and Eraser (E); they draw over the plan in five colours and three sizes. Click a mark to move, recolour, edit or delete it. Ctrl+Z undoes markup changes, including erasing. |
+| Markup | The "Draw & annotate" bar above the plan has Pen (B), Arrow (A), Text (T), Rectangle and Eraser (E); they draw over the plan in five colours and three sizes. Click a mark to move, recolour, edit or delete it. Ctrl+Z undoes markup changes, including erasing. |
 | My catalogue | Items you add (or "Save to my catalogue" from a placed block) are stored on the server in `backend/outputs/my-catalogue.json` and appear on every plan, every time. |
+| Select, move, delete | In the Draw & annotate bar, **Select** picks a pin, drawing, arrow, text, block, ruler line or room outline (drag to move, Delete, the Delete button or the red ✕ beside the selection removes it; Undo brings it back). **Box select** (V) drags a rectangle around several things; drag one to move them all, Delete removes them. Shift+click adds or removes one. |
+| White-out | The **White-out** tool (W) paints a white box over lines of the PDF itself, in the editor and in every export. The PDF is not changed; select the box and delete it to bring the lines back. |
+| Undo and redo | Ctrl+Z / Undo reverses the last delete, move or drawing of marks, pins, furniture, rooms and ruler lines; Ctrl+Y or Ctrl+Shift+Z / Redo puts it back (Cmd on a Mac). A new action clears Redo. |
+| Rectangle | The **Rectangle** tool draws a box and labels it with its size and area in m² and sq ft at the drawing's scale (needs a scale). The label updates as you drag. |
 | Resize blocks | Select an item and drag the white edge handles (opposite edge stays fixed, sizes snap to 10 mm), or type exact width, depth and clearance. "Save size as preset" adds it to the catalogue. |
 | Review pins | The PDF's own notes are imported as pins (wrapped lines merge into one). Add pins, drag them to the spot they refer to, reply in a thread, resolve or reopen. |
 | Options | Each option is its own set of furniture ("stove left" vs "stove right"). Duplicate an option, rename it, and compare items, furniture area, free area and clashes side by side. |
@@ -35,20 +40,26 @@ Upload an architectural PDF and turn it into structured, classified geometry you
 
 ## Setup
 
-Python 3.10+ is the only requirement.
+Python 3.10+ is the only requirement. The tool runs the same on Windows and macOS (and Linux).
 
-```bash
-./run.sh          # installs backend/requirements.txt and serves http://localhost:8000
-```
+| Computer | How to start it |
+|---|---|
+| **Windows** | Double-click `run.bat`. It installs the requirements, starts the server and opens the browser (Chrome if it is installed). |
+| **Mac** | Double-click `run.command` (or run `./run.sh` in Terminal). The first run sets up a private `.venv` folder, installs the requirements, starts the server and opens Chrome (or your default browser). |
 
-On Windows, double-click `run.bat` instead. It installs the requirements, starts the server and opens the browser.
+On a Mac, if you need Python: install it from https://www.python.org/downloads/ or run `brew install python`. The Python that comes with macOS is usually too old. If double-clicking `run.command` says it can't be opened (it was downloaded as a zip), right-click it, choose **Open**, or run `chmod +x run.command run.sh` once in Terminal.
 
-The server binds to 127.0.0.1 only. Uploaded plans and extraction results are stored in `backend/outputs/` (git-ignored).
+Both launchers close an old copy still running on port 8000, so an update always takes effect. The server binds to 127.0.0.1 only. Uploaded plans and extraction results are stored in `backend/outputs/` (git-ignored).
+
+Keyboard shortcuts that say Ctrl (Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+Z) use **Cmd** on a Mac. The key marked "delete" on a Mac keyboard deletes the selection, the same as Delete on a PC.
+
+Extras below install into the same Python the launcher uses: on Windows `pip install ...`; on a Mac `.venv/bin/python -m pip install ...` (from the project folder).
 
 ## OCR setup (room names and automatic scale)
 
 ```bash
 pip install -r backend/requirements-ocr.txt      # rapidocr-onnxruntime: pure pip, no system packages
+# Mac:  .venv/bin/python -m pip install -r backend/requirements-ocr.txt
 ```
 
 Without it, room detection still works but rooms are unnamed and the scale is not read. The first "Detect rooms" on a page reads the text (about 10 seconds for an A1 sheet) and caches it; later runs take about 3 seconds.
@@ -59,6 +70,7 @@ The demo parser works with no setup. For a real assistant, install the SDK for t
 
 ```bash
 pip install -r backend/requirements-ai.txt        # anthropic, openai, google-genai (install only what you need)
+# Mac:  .venv/bin/python -m pip install -r backend/requirements-ai.txt
 ```
 
 ```

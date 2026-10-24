@@ -268,13 +268,14 @@ class Item(BaseModel):
 
 
 class Mark(BaseModel):
-    """Freehand markup drawn over the plan: pen strokes, arrows and text notes."""
+    """Markup drawn over the plan: pen strokes, arrows, text notes, and white-out boxes (mask: two corner points)."""
     id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
-    type: Literal["pen", "arrow", "text"]
+    type: Literal["pen", "arrow", "text", "mask", "rect"]
     color: str = Field(default="#dc2626", pattern=r"^#[0-9a-fA-F]{6}$")
     width: float = Field(default=1, gt=0, le=1000)     # stroke width, PDF points
     size: float = Field(default=10, gt=0, le=1000)     # text height, PDF points
     text: str = Field(default="", max_length=500)
+    box: float = Field(default=0, ge=0, le=1e6)        # text wrapping width, PDF points (0 = no wrapping)
     pts: list[Pt] = Field(min_length=1, max_length=3000)
 
 
