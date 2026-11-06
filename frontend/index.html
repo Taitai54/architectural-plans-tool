@@ -1789,7 +1789,7 @@ function statePayload() {
     rooms: st.rooms.map(r => ({ id: r.id, name: r.name, poly: r.poly.map(pt) })),
     items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: clampNum(i.w, 1, 50000), d: clampNum(i.d, 1, 50000), clear: clampNum(i.clear, 0, 10000), option: i.option, status: i.status, source: i.source || 'user', note: i.note || '', label: i.label || '', tsize: clampNum(i.tsize || 0, 0, 5000), replaces: i.replaces || '', x: i.x, y: i.y, rot: i.rot || 0 })),
     measures: st.measures.map(m => ({ a: pt(m.a), b: pt(m.b) })),
-    marks: st.marks.map(m => ({ id: m.id, type: m.type, color: m.color, width: m.width, size: m.size, text: m.text || '', pts: m.pts.map(pt) })),
+    marks: st.marks.map(m => ({ id: m.id, type: m.type, color: m.color, width: m.width, size: m.size, text: m.text || '', w: clampNum(m.w || 0, 0, 100000), pts: m.pts.map(pt) })),
     custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: clampNum(c.w, 1, 50000), d: clampNum(c.d, 1, 50000), clear: clampNum(c.clear, 0, 10000) })),
   };
 }
@@ -1832,7 +1832,23 @@ function distSeg(px, py, ax, ay, bx, by) {
   const t = L ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
-function textBox(m) { const [x, y] = m.pts[0]; return [x, y - m.size, x + Math.max(1, m.text.length) * m.size * 0.58, y + m.size * 0.3]; }
+function markLines(m) {   // a text note's lines: wrapped to its box width when it has one
+  const paras = String(m.text).split('\n');
+  if (!(m.w > 0)) return paras;
+  const perLine = Math.max(1, Math.floor(m.w / (m.size * 0.58)));
+  return paras.flatMap(p => p.trim() ? wrapText(p, perLine, 1e6) : ['']);
+}
+function textBox(m) {
+  const [x, y] = m.pts[0], lines = markLines(m), widest = Math.max(1, ...lines.map(l => l.length)) * m.size * 0.58;
+  return [x, y - m.size, x + (m.w > 0 ? m.w : widest), y + (lines.length - 1) * m.size * 1.2 + m.size * 0.3];
+}
+function markHandles(m) { const b = textBox(m); return { e: [b[2], (b[1] + b[3]) / 2], se: [b[2], b[3]] }; }   // width, and overall size
+function hitMarkHandle(m, wx, wy) {
+  if (!m || m.type !== 'text') return null;
+  const hp = markHandles(m);
+  for (const h in hp) if (Math.hypot(hp[h][0] - wx, hp[h][1] - wy) * st.view.k <= 9) return h;
+  return null;
+}
 function markHit(m, x, y, tol) {
   if (m.type === 'text') { const b = textBox(m); return x >= b[0] - tol && x <= b[2] + tol && y >= b[1] - tol && y <= b[3] + tol; }
   const r = tol + m.width / 2;
@@ -1865,7 +1881,8 @@ function drawMarks(g, k) {
       else g.appendChild(el('polyline', { points: m.pts.map(q => q.join(',')).join(' '), fill: 'none', stroke: '#1d4ed8', 'stroke-opacity': 0.35, 'stroke-width': m.width + 8 / k, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...common }));
     }
     if (m.type === 'text') {
-      g.appendChild(el('text', { x: m.pts[0][0], y: m.pts[0][1], 'font-size': m.size, fill: m.color, 'font-family': 'Arial,sans-serif', 'font-weight': 700, stroke: '#fff', 'stroke-width': m.size / 5, 'paint-order': 'stroke', ...common }, m.text));
+      markLines(m).forEach((ln, i) => g.appendChild(el('text', { x: m.pts[0][0], y: m.pts[0][1] + i * m.size * 1.2, 'font-size': m.size, fill: m.color, 'font-family': 'Arial,sans-serif', 'font-weight': 700, stroke: '#fff', 'stroke-width': m.size / 5, 'paint-order': 'stroke', ...common }, ln)));
+      if (sel && !st.mode) { const hp = markHandles(m), sz = 8 / k; for (const h in hp) g.appendChild(el('rect', { x: hp[h][0] - sz / 2, y: hp[h][1] - sz / 2, width: sz, height: sz, fill: '#fff', stroke: '#1d4ed8', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' })); }
     } else if (m.type === 'arrow' && m.pts.length > 1) {
       const [a, b] = m.pts, len = Math.hypot(b[0] - a[0], b[1] - a[1]);
       if (len < 1e-6) continue;
@@ -1926,28 +1943,41 @@ function cancelMark(d) {
 // Double-click a block or shape to edit its text, make it bigger/smaller or fit it automatically.
 const ied = $('item-ed'), iedText = $('ied-text');
 let iedItem = null;
-function closeItemEditor() { if (!iedItem) return; iedItem = null; ied.style.display = 'none'; renderSelected(); }
-function openItemEditor(it) {
-  closeItemEditor(); const geo = itemGeom(it); if (!geo) return;
-  iedItem = it; selectItem(it.id);
-  const { k, tx, ty } = st.view, r = svg.getBoundingClientRect();
-  const left = Math.min(Math.max(it.x * k + tx - 115, 4), r.width - 238), top = Math.min(Math.max(it.y * k + ty + (Math.max(it.w, it.d) / geo.s) * k / 2 + 8, 4), r.height - 110);
-  Object.assign(ied.style, { display: 'block', left: left + 'px', top: top + 'px' });
-  iedText.value = it.label || ''; iedSize(); iedText.focus(); iedText.select();
+const iedIsMark = () => !!iedItem && iedItem.type === 'text';
+function closeItemEditor() {
+  if (!iedItem) return;
+  const m = iedIsMark() ? iedItem : null; iedItem = null; ied.style.display = 'none';
+  if (m && !m.text.trim()) { st.marks = st.marks.filter(x => x !== m); st.selMark = null; markChanged(); return; }   // an emptied note is removed
+  if (m) markChanged(); else renderSelected();
 }
-function iedSize() { const g = iedItem && itemGeom(iedItem); $('ied-sz').textContent = !g ? '' : iedItem.tsize ? Math.round(iedItem.tsize) + ' mm' : isShape(iedItem) ? 'auto' : 'standard'; }
-function iedChanged() { scheduleSave(); renderRooms(); renderOverlay(); iedSize(); }
+function openItemEditor(it) {
+  closeItemEditor();
+  const isMk = it.type === 'text', geo = isMk ? null : itemGeom(it); if (!isMk && !geo) return;
+  iedItem = it; if (isMk) { pushMarkUndo(); selectMark(it.id); } else selectItem(it.id);
+  const { k, tx, ty } = st.view, r = svg.getBoundingClientRect();
+  const cx = isMk ? (textBox(it)[0] + textBox(it)[2]) / 2 : it.x, by = isMk ? textBox(it)[3] : it.y + (Math.max(it.w, it.d) / geo.s) / 2;
+  const left = Math.min(Math.max(cx * k + tx - 115, 4), r.width - 238), top = Math.min(Math.max(by * k + ty + 8, 4), r.height - 110);
+  Object.assign(ied.style, { display: 'block', left: left + 'px', top: top + 'px' });
+  iedText.maxLength = isMk ? 500 : 200; $('ied-auto').textContent = isMk ? 'No wrap' : 'Auto'; $('ied-auto').title = isMk ? 'Show the note on one line' : 'Fit the text to the box automatically';
+  iedText.value = (isMk ? it.text : it.label) || ''; iedSize(); iedText.focus(); iedText.select();
+}
+function iedSize() {
+  if (iedIsMark()) { $('ied-sz').textContent = Math.round(iedItem.size) + ' pt' + (iedItem.w > 0 ? '' : ' · 1 line'); return; }
+  const g = iedItem && itemGeom(iedItem); $('ied-sz').textContent = !g ? '' : iedItem.tsize ? Math.round(iedItem.tsize) + ' mm' : isShape(iedItem) ? 'auto' : 'standard';
+}
+function iedChanged() { scheduleSave(); if (!iedIsMark()) renderRooms(); renderOverlay(); iedSize(); }
 function iedScale(f) {
+  if (iedIsMark()) { iedItem.size = Math.max(2, Math.min(1000, iedItem.size * f)); iedChanged(); return; }
   const it = iedItem, g = it && itemGeom(it); if (!g) return;
   const cur = it.tsize || (isShape(it) ? autoFit(it, g) * g.s : 10 / st.view.k * 0.9 * g.s);
   it.tsize = Math.max(5, Math.min(5000, Math.round(cur * f))); iedChanged();
 }
-iedText.addEventListener('input', () => { if (iedItem) { iedItem.label = iedText.value.slice(0, 200); iedChanged(); } });
+iedText.addEventListener('input', () => { if (!iedItem) return; if (iedIsMark()) iedItem.text = iedText.value.slice(0, 500); else iedItem.label = iedText.value.slice(0, 200); iedChanged(); });
 iedText.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); closeItemEditor(); } });
 for (const id of ['ied-dn', 'ied-up', 'ied-auto', 'ied-done']) $(id).addEventListener('mousedown', e => e.preventDefault());   // keep focus in the text box
 $('ied-dn').onclick = () => iedScale(1 / 1.2);
 $('ied-up').onclick = () => iedScale(1.2);
-$('ied-auto').onclick = () => { if (iedItem) { iedItem.tsize = 0; iedChanged(); } };
+$('ied-auto').onclick = () => { if (!iedItem) return; if (iedIsMark()) iedItem.w = 0; else iedItem.tsize = 0; iedChanged(); };
 $('ied-done').onclick = closeItemEditor;
 ied.addEventListener('focusout', e => { if (iedItem && !ied.contains(e.relatedTarget)) setTimeout(() => { if (iedItem && !ied.contains(document.activeElement)) closeItemEditor(); }, 0); });
 const tb = $('mk-textbox');
@@ -1965,8 +1995,8 @@ function commitText() {
   const t = tb.value.trim(), a = textAt; cancelText();
   if (!t) return;
   pushMarkUndo();
-  const m = { id: uid(), type: 'text', color: a.color, width: 1, size: a.size, text: t.slice(0, 500), pts: [[a.x, a.y]] };
-  st.marks.push(m); st.selMark = null;
+  const m = { id: uid(), type: 'text', color: a.color, width: 1, size: a.size, text: t.slice(0, 500), w: t.length > 40 ? 40 * a.size * 0.58 : 0, pts: [[a.x, a.y]] };   // long notes start wrapped; drag the right handle to change that
+  st.marks.push(m); st.selMark = m.id; st.selected = null; st.selectedPin = null;
   markChanged();
 }
 tb.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitText(); } else if (e.key === 'Escape') { e.preventDefault(); cancelText(); } });
@@ -2001,6 +2031,15 @@ function renderMarkPanel() {
     const i = document.createElement('input'); i.className = 'field'; i.type = 'text'; i.value = m.text; i.maxLength = 500; i.style.flex = 1;
     i.onchange = () => { if (!i.value.trim()) return; pushMarkUndo(); m.text = i.value.trim(); markChanged(); };
     row.appendChild(i); wrap.appendChild(row);
+    const hint = document.createElement('div'); hint.className = 'hint'; hint.style.margin = '4px 0';
+    hint.textContent = 'Drag the right handle to wrap the text to a width, the corner handle to resize it. Double-click the note to edit.';
+    wrap.appendChild(hint);
+    const sz = document.createElement('div'); sz.className = 'btns';
+    const sb = (label, fn) => { const x = document.createElement('button'); x.className = 'btn'; x.textContent = label; x.onclick = () => { pushMarkUndo(); fn(); markChanged(); }; sz.appendChild(x); };
+    sb('A−', () => { m.size = Math.max(2, m.size / 1.2); if (m.w) m.w = Math.max(m.size * 2, m.w); });
+    sb('A+', () => { m.size = Math.min(1000, m.size * 1.2); });
+    sb('No wrap', () => { m.w = 0; });
+    wrap.appendChild(sz);
   }
   const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'Delete mark'; b.onclick = () => deleteMark(m.id);
   const r = document.createElement('div'); r.className = 'btns'; r.appendChild(b); wrap.appendChild(r);
@@ -2082,13 +2121,15 @@ let drag = null;
 svg.addEventListener('pointerdown', e => {
   if (!st.scene) return;
   svg.setPointerCapture(e.pointerId);
-  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null, mark: null, markMove: null, button: e.button };
+  drag = { x: e.clientX, y: e.clientY, tx: st.view.tx, ty: st.view.ty, moved: false, item: null, handle: null, pin: null, ruler: null, mark: null, markMove: null, mkHandle: null, button: e.button };
   if (e.button !== 0) return;               // right and middle buttons only pan
   if (st.mode === 'measure' && st.pending.length === 0) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.ruler = snap(wx, wy).p; }
   if (st.mode === 'pen' || st.mode === 'arrow' || st.mode === 'erase') { const [wx, wy] = screenToWorld(e.clientX, e.clientY); drag.mark = startMark(wx, wy); return; }
   if (!st.mode) {
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
     const sel = st.items.find(i => i.id === st.selected), side = sel && shownItems().includes(sel) ? hitHandle(sel, wx, wy) : null;
+    const selMk = st.marks.find(m => m.id === st.selMark), mside = side ? null : hitMarkHandle(selMk, wx, wy);
+    if (mside) { drag.mkHandle = { m: selMk, side: mside, m0: JSON.parse(JSON.stringify(selMk)), snap: markSnapshot(), pushed: false }; return; }
     const pin = side ? null : hitPin(wx, wy);
     const mark = side || pin ? null : hitMark(wx, wy);
     const hit = side || pin || mark ? null : hitItem(wx, wy);
@@ -2104,6 +2145,20 @@ svg.addEventListener('pointermove', e => {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(dx, dy) > 4) drag.moved = true;
     if (drag.mark) { const [wx, wy] = screenToWorld(e.clientX, e.clientY); extendMark(drag.mark, wx, wy); return; }
+    if (drag.mkHandle) {
+      if (drag.moved) {
+        const h = drag.mkHandle, m = h.m, m0 = h.m0, [wx, wy] = screenToWorld(e.clientX, e.clientY);
+        if (!h.pushed) { st.markUndo.push(h.snap); h.pushed = true; }
+        const b0 = textBox(m0);
+        if (h.side === 'e') m.w = Math.max(m.size * 2, wx - m0.pts[0][0]);
+        else {   // corner: scale the text (and its wrap width) with the pointer's distance below the first line
+          const base = Math.max(1e-6, b0[3] - m0.pts[0][1]), f = Math.max(0.1, (wy - m0.pts[0][1]) / base);
+          m.size = Math.max(2, Math.min(1000, m0.size * f)); if (m0.w > 0) m.w = m0.w * m.size / m0.size;
+        }
+        renderOverlay();
+      }
+      return;
+    }
     if (drag.markMove) {
       if (drag.moved) {
         const mm = drag.markMove, [wx, wy] = screenToWorld(e.clientX, e.clientY);
@@ -2140,10 +2195,11 @@ svg.addEventListener('pointermove', e => {
 svg.addEventListener('pointerup', e => {
   if (!drag) return;                         // the press did not start on the plan (e.g. a chip or item dropped here)
   if (drag.button !== 0) { drag = null; return; }
-  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin), ruler = drag && drag.ruler, mkDrag = drag && drag.mark, mkMove = drag && drag.markMove; drag = null;
+  const wasDrag = drag && drag.moved, dragItem = drag && drag.item, dragOther = drag && (drag.handle || drag.pin), ruler = drag && drag.ruler, mkDrag = drag && drag.mark, mkMove = drag && drag.markMove, mkHandle = drag && drag.mkHandle; drag = null;
   if (!st.scene) return;
   if (mkDrag) { finishMark(mkDrag); return; }
   if (mkMove) { if (wasDrag) markChanged(); return; }
+  if (mkHandle) { if (wasDrag) markChanged(); return; }
   if (ruler && wasDrag) {                      // press-drag-release: the ruler runs from where you pressed to where you let go
     const [wx, wy] = screenToWorld(e.clientX, e.clientY);
     st.pending = []; onPick(ruler); onPick(snap(wx, wy).p); return;
@@ -2171,13 +2227,16 @@ svg.addEventListener('pointercancel', () => {
   const moved = drag && drag.moved && (drag.item || drag.handle || drag.pin);
   if (drag && drag.mark) cancelMark(drag.mark);
   if (drag && drag.markMove && drag.markMove.undone) { st.marks = JSON.parse(st.markUndo.pop()); }
+  if (drag && drag.mkHandle && drag.mkHandle.pushed) { st.marks = JSON.parse(st.markUndo.pop()); }
   drag = null; st.pending = []; st.hover = null; renderOverlay();
   if (moved) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); }
 });
 svg.addEventListener('dblclick', e => {
   if (st.mode === 'room') { closeRoom(); return; }
   if (st.mode) return;
-  const it = hitItem(...screenToWorld(e.clientX, e.clientY));
+  const [wx, wy] = screenToWorld(e.clientX, e.clientY), mk = hitMark(wx, wy);
+  if (mk && mk.type === 'text') { openItemEditor(mk); return; }
+  const it = hitItem(wx, wy);
   if (it) openItemEditor(it);
 });
 window.addEventListener('keydown', e => {

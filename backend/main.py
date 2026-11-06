@@ -276,6 +276,7 @@ class Mark(BaseModel):
     width: float = Field(default=1, gt=0, le=1000)     # stroke width, PDF points
     size: float = Field(default=10, gt=0, le=1000)     # text height, PDF points
     text: str = Field(default="", max_length=500)
+    w: float = Field(default=0, ge=0, le=100000)       # text notes: box width in PDF points, text wraps to it (0 = one line)
     pts: list[Pt] = Field(min_length=1, max_length=3000)
 
 
