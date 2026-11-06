@@ -2290,8 +2290,32 @@ function plainColours(root) {
     t.parentNode.insertBefore(halo, t);
   }
 }
+// Everything drawn on top of the plan (blocks, shapes, rooms, notes, pins, measures), in export form.
+function buildExportOverlay() {
+  const ov = el('g');
+  buildExtras(ov, 1);
+  for (const m of st.measures) {
+    ov.appendChild(el('line', { x1: m.a[0], y1: m.a[1], x2: m.b[0], y2: m.b[1], stroke: '#cc0000', 'stroke-width': 1 }));
+    ov.appendChild(el('text', { x: (m.a[0] + m.b[0]) / 2, y: (m.a[1] + m.b[1]) / 2 - 3, 'font-size': 9, 'text-anchor': 'middle', fill: '#cc0000', 'font-family': 'Arial,sans-serif' }, lengthLabel(m.a, m.b, m.view)));
+  }
+  plainColours(ov);
+  return ov;
+}
+// The drawing's own box grown to take in anything placed outside it, so shapes, notes and blocks are never cropped.
+function exportBox(ov) {
+  const b = visibleBox().slice();
+  const probe = el('svg', { width: 0, height: 0, style: 'position:absolute;left:-9999px;top:-9999px;visibility:hidden' });
+  probe.appendChild(ov); document.body.appendChild(probe);
+  try {
+    const g = ov.getBBox();
+    if (g.width || g.height) { b[0] = Math.min(b[0], g.x); b[1] = Math.min(b[1], g.y); b[2] = Math.max(b[2], g.x + g.width); b[3] = Math.max(b[3], g.y + g.height); }
+  } catch (_) { /* no layout available: keep the drawing's box */ }
+  probe.remove();
+  return b;
+}
 function buildExportSvg(scale) {
-  const b = visibleBox(), pad = 20;
+  const pad = 20;
+  const ov = buildExportOverlay(), b = exportBox(ov);
   const clone = world.cloneNode(true);
   clone.removeAttribute('transform'); clone.removeAttribute('id');
   for (const c of CAT_ORDER) { const g = clone.querySelector('#cat-' + c); if (g && !st.catOn[c]) g.remove(); }
@@ -2303,14 +2327,7 @@ function buildExportSvg(scale) {
   out.appendChild(el('style', {}, 'path{fill:none;stroke-linecap:round;stroke-linejoin:round}.c-structure{stroke-width:.72}.c-detail,.c-dashed{stroke-width:.36}.c-fine,.c-hatch{stroke-width:.12}.c-fills,.c-text{stroke:none}.note{fill:#1d4ed8;font-family:Arial,sans-serif}'));
   if (scale) out.appendChild(el('rect', { x: b[0] - pad, y: b[1] - pad, width: w, height: h, fill: '#fff' }));
   out.appendChild(clone);
-  const ov = el('g');
-  buildExtras(ov, 1);
-  for (const m of st.measures) {
-    ov.appendChild(el('line', { x1: m.a[0], y1: m.a[1], x2: m.b[0], y2: m.b[1], stroke: '#cc0000', 'stroke-width': 1 }));
-    ov.appendChild(el('text', { x: (m.a[0] + m.b[0]) / 2, y: (m.a[1] + m.b[1]) / 2 - 3, 'font-size': 9, 'text-anchor': 'middle', fill: '#cc0000', 'font-family': 'Arial,sans-serif' }, lengthLabel(m.a, m.b, m.view)));
-  }
   out.appendChild(ov);
-  plainColours(ov);
   return { svg: out, w, h };
 }
 // File names carry the plan, page, version name and date, so saved versions can be told apart.
@@ -2345,7 +2362,7 @@ $('dl-markup-pdf').onclick = async () => {
 $('dl-png').onclick = async () => {
   if (!st.scene) return;
   try {
-    const b = visibleBox(), longest = Math.max(b[2] - b[0], b[3] - b[1]) + 40;
+    const b = exportBox(buildExportOverlay()), longest = Math.max(b[2] - b[0], b[3] - b[1]) + 40;
     const scale = Math.min(4, 6000 / longest);      // sharp, but never beyond what a browser canvas can hold
     const { svg: out, w, h } = buildExportSvg(scale);
     const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(out)], { type: 'image/svg+xml' }));
