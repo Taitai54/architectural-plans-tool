@@ -92,6 +92,14 @@
   .cat-btn { text-align: left; padding: 6px 8px; border: 1px solid #d0d0dc; border-radius: 6px; background: white; font-size: 12px; cursor: pointer; line-height: 1.3; }
   .cat-btn:hover { background: #f0f0f8; }
   .cat-btn.on { border-color: #1d4ed8; background: #eaf0ff; }
+  .cat-shapes { grid-column: 1 / -1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #1d4ed8; margin-top: 2px; }
+  .cat-btn.shape { display: flex; align-items: center; gap: 8px; border: 2px solid #1d4ed8; background: #eaf0ff; font-weight: 700; padding: 10px 8px; }
+  .cat-btn.shape svg { flex-shrink: 0; }
+  #item-ed { position: absolute; display: none; z-index: 6; background: #fff; border: 1px solid #1d4ed8; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.2); padding: 6px; width: 230px; }
+  #item-ed textarea { width: 100%; height: 64px; resize: none; font: 13px Arial, sans-serif; border: 1px solid #d0d0dc; border-radius: 5px; padding: 4px 6px; }
+  #item-ed .btns { margin-top: 5px; display: flex; gap: 4px; align-items: center; }
+  #item-ed .btn { padding: 4px 8px; }
+  #item-ed .sz { font-size: 11px; color: #666; margin-left: auto; }
   .cat-btn small { display: block; color: #888; font-size: 10.5px; }
   .sel-box { margin-top: 10px; padding: 10px; background: #f6f8ff; border: 1px solid #dbe4ff; border-radius: 8px; }
   .sel-box .row input[type=number] { width: 70px; }
@@ -271,6 +279,7 @@
       <div class="placeholder" id="placeholder"><h3>No plan loaded</h3><p>Upload a vector PDF plan on the left.<br>It is converted into classified geometry you can declutter and measure.</p></div>
       <svg id="svg" xmlns="http://www.w3.org/2000/svg" style="display:none"><g id="world"></g><g id="overlay"></g></svg>
       <div id="hud"></div>
+      <div id="item-ed"><textarea id="ied-text" maxlength="200" placeholder="Type text for this shape"></textarea><div class="btns"><button class="btn" id="ied-dn" title="Smaller text">A−</button><button class="btn" id="ied-up" title="Bigger text">A+</button><button class="btn" id="ied-auto" title="Fit the text to the box automatically">Auto</button><span class="sz" id="ied-sz"></span><button class="btn primary" id="ied-done">Done</button></div></div>
       <input type="text" id="mk-textbox" maxlength="500" placeholder="Type, then Enter">
     </div>
     <div id="chat">
@@ -295,6 +304,8 @@ const CLEAN = { wallfill: 1, glass: 1, structure: 1, detail: 1, fills: 1, dashed
 const $ = id => document.getElementById(id);
 // Standard sizes come from the backend (backend/catalogue.py) so the viewer and the AI agree.
 let CATALOGUE = [];
+const SHAPES = [{ kind: 'square', name: 'Square', w: 1000, d: 1000, clear: 0, shape: true }, { kind: 'circle', name: 'Circle', w: 1000, d: 1000, clear: 0, shape: true }];
+const isShape = it => it.kind === 'square' || it.kind === 'circle';
 const uid = () => 'x' + Math.random().toString(36).slice(2, 10);
 
 const stage = $('stage'), svg = $('svg'), world = $('world'), overlay = $('overlay');
@@ -1115,17 +1126,35 @@ function drawItem(g, it, k, selected, ghost) {
   const poly = P => P.map(q => q.join(',')).join(' ');
   const base = ghost ? 0.7 : rejected ? 0.4 : 1;
   if (geo.zone && !rejected) g.appendChild(el('polygon', { points: poly(geo.zone), fill: c.warn ? 'rgba(217,119,6,.22)' : 'rgba(29,78,216,.06)', stroke: c.warn ? '#d97706' : '#1d4ed8', 'stroke-width': 1, 'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke', opacity: ghost ? 0.6 : 1 }));
-  const body = el('polygon', { points: poly(geo.body), fill: rejected ? 'rgba(107,114,128,.12)' : c.hard ? 'rgba(220,38,38,.28)' : 'rgba(29,78,216,.22)', stroke: color, 'stroke-width': selected ? 2.6 : 1.5, 'vector-effect': 'non-scaling-stroke', opacity: base });
+  const attrs0 = { fill: rejected ? 'rgba(107,114,128,.12)' : c.hard ? 'rgba(220,38,38,.28)' : 'rgba(29,78,216,.22)', stroke: color, 'stroke-width': selected ? 2.6 : 1.5, 'vector-effect': 'non-scaling-stroke', opacity: base };
+  const body = it.kind === 'circle' ? (() => { const [rx, ry] = [it.w / 2 / geo.s, it.d / 2 / geo.s]; const e = el('ellipse', { cx: it.x, cy: it.y, rx, ry, ...attrs0 }); if (it.rot) e.setAttribute('transform', `rotate(${it.rot} ${it.x} ${it.y})`); return e; })() : el('polygon', { points: poly(geo.body), fill: rejected ? 'rgba(107,114,128,.12)' : c.hard ? 'rgba(220,38,38,.28)' : 'rgba(29,78,216,.22)', stroke: color, 'stroke-width': selected ? 2.6 : 1.5, 'vector-effect': 'non-scaling-stroke', opacity: base });
   if (pending || rejected) body.setAttribute('stroke-dasharray', '7 4');
   g.appendChild(body);
-  g.appendChild(el('line', { x1: geo.front[0][0], y1: geo.front[0][1], x2: geo.front[1][0], y2: geo.front[1][1], stroke: color, 'stroke-width': 3.5, 'vector-effect': 'non-scaling-stroke', opacity: base }));
+  if (!isShape(it)) g.appendChild(el('line', { x1: geo.front[0][0], y1: geo.front[0][1], x2: geo.front[1][0], y2: geo.front[1][1], stroke: color, 'stroke-width': 3.5, 'vector-effect': 'non-scaling-stroke', opacity: base }));
   const fs = 10 / k;
-  g.appendChild(haloText(it.x, it.y - fs * 0.1, fs, rejected ? '#6b7280' : '#1e3a8a', 700, (it.status === 'accepted' ? '✓ ' : it.source === 'ai' && it.status === 'pending' ? '✦ ' : '') + it.name));
-  g.appendChild(haloText(it.x, it.y + fs * 1.1, fs * 0.9, rejected ? '#6b7280' : '#1e3a8a', 400, `${Math.round(it.w)}×${Math.round(it.d)}`));
-  if (it.label) {      // the user's own text, wrapped to the block's width and kept horizontal
+  if (!isShape(it)) {
+    g.appendChild(haloText(it.x, it.y - fs * 0.1, fs, rejected ? '#6b7280' : '#1e3a8a', 700, (it.status === 'accepted' ? '✓ ' : it.source === 'ai' && it.status === 'pending' ? '✦ ' : '') + it.name));
+    g.appendChild(haloText(it.x, it.y + fs * 1.1, fs * 0.9, rejected ? '#6b7280' : '#1e3a8a', 400, `${Math.round(it.w)}×${Math.round(it.d)}`));
+  }
+  if (it.label && (isShape(it) || it.tsize)) {   // text sized by the user (or fitted automatically), wrapped to the box and centred in it
+    const tfs = it.tsize ? it.tsize / geo.s : autoFit(it, geo), { lines } = layoutText(it, geo, tfs, true), y0 = it.y - (lines.length - 1) * tfs * 0.575 + tfs * 0.35;
+    lines.forEach((ln, i) => g.appendChild(haloText(it.x, y0 + i * tfs * 1.15, tfs, rejected ? '#6b7280' : '#92400e', 600, ln)));
+  } else if (it.label) {      // the user's own text, wrapped to the block's width and kept horizontal
     const across = (((it.rot || 0) % 180) ? it.d : it.w) / geo.s, perLine = Math.max(14, Math.floor(across / (fs * 0.5)));
     wrapText(it.label, perLine, 4).forEach((ln, i) => g.appendChild(haloText(it.x, it.y + fs * (2.3 + i * 1.1), fs * 0.9, rejected ? '#6b7280' : '#92400e', 600, ln)));
   }
+}
+function layoutText(it, geo, tfs, clip) {   // wrap the item's text into its box at font size tfs (PDF points)
+  const across = (((it.rot || 0) % 180) ? it.d : it.w) / geo.s, down = (((it.rot || 0) % 180) ? it.w : it.d) / geo.s, usable = it.kind === 'circle' ? 0.7 : 0.92;   // a circle's text must fit its inscribed square
+  const perLine = Math.max(1, Math.floor(across * usable / (tfs * 0.55))), maxLines = Math.max(1, Math.floor(down * usable / (tfs * 1.15)));
+  const lines = wrapText(it.label, perLine, clip ? maxLines : 1e6);
+  const fits = lines.length <= maxLines && lines.every(l => l.length <= perLine);
+  return { lines, fits };
+}
+function autoFit(it, geo) {   // biggest font size (PDF points) at which all the text fits inside the box
+  let lo = 0.5, hi = Math.max(it.w, it.d) / geo.s;
+  for (let i = 0; i < 22; i++) { const mid = (lo + hi) / 2; if (layoutText(it, geo, mid, false).fits) lo = mid; else hi = mid; }
+  return lo;
 }
 function wrapText(text, perLine, maxLines) {
   const out = []; let cur = '';
@@ -1213,7 +1242,7 @@ function buildExtras(g, k) {
 function placeAt(x, y) {
   const s = mmPerPtAt(x, y);
   if (!s) { needScale(x, y, st.placing); return; }
-  const it = { id: uid(), kind: st.placing.kind, name: st.placing.name, w: st.placing.w, d: st.placing.d, clear: st.placing.clear, option: st.activeOption, status: 'pending', x, y, rot: st.placeRot || 0 };
+  const it = { id: uid(), kind: st.placing.kind, name: st.placing.name, w: st.placing.w, d: st.placing.d, clear: st.placing.clear, tsize: 0, option: st.activeOption, status: 'pending', x, y, rot: st.placeRot || 0 };
   st.items.push(it);
   setMode(null);
   hideCatHint();
@@ -1232,11 +1261,17 @@ function nudge(it, key, mm) {
 
 function renderCatalogue() {
   const w = $('catalogue'); w.textContent = '';
-  const all = CATALOGUE.concat(st.customItems.map(c => ({ ...c, custom: true })));
+  const all = SHAPES.concat(CATALOGUE, st.customItems.map(c => ({ ...c, custom: true })));
   for (const c of all) {
+    if (c === SHAPES[0]) { const h = document.createElement('div'); h.className = 'cat-shapes'; h.textContent = 'Shapes: drag onto the plan'; w.appendChild(h); }
+    else if (c === CATALOGUE[0]) { const h = document.createElement('div'); h.className = 'cat-shapes'; h.style.color = '#666'; h.textContent = 'Furniture & appliances'; w.appendChild(h); }
     const b = document.createElement('button'); b.className = 'cat-btn' + (st.placing && st.placing.name === c.name && st.placing.w === c.w ? ' on' : '');
-    b.append(document.createTextNode(c.name));
-    const sm = document.createElement('small'); sm.textContent = `${c.w}×${c.d} mm` + (c.custom ? ' · custom' : ''); b.appendChild(sm);
+    if (c.shape) {
+      b.classList.add('shape');
+      b.insertAdjacentHTML('beforeend', c.kind === 'circle' ? '<svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="11" fill="rgba(29,78,216,.22)" stroke="#1d4ed8" stroke-width="2"/></svg>' : '<svg width="26" height="26" viewBox="0 0 26 26"><rect x="2" y="2" width="22" height="22" fill="rgba(29,78,216,.22)" stroke="#1d4ed8" stroke-width="2"/></svg>');
+    }
+    const lab = document.createElement('span'); lab.append(document.createTextNode(c.name)); b.appendChild(lab);
+    const sm = document.createElement('small'); sm.textContent = `${c.w}×${c.d} mm` + (c.custom ? ' · custom' : ''); (c.shape ? lab : b).appendChild(sm);
     pointerDrag(b, {
       start: () => { if (!anyScale()) { needScale(); return false; } st.placeRot = 0; setMode('place'); st.placing = c; st.dragPlacing = true; return true; },
       move: (e, over) => { st.hover = over ? screenToWorld(e.clientX, e.clientY) : null; renderOverlay(); },
@@ -1313,6 +1348,7 @@ function renderSelected() {
   };
   field('Name', it.name, v => { it.name = v.slice(0, 80) || it.name; }, 'text');
   field('Text', it.label || '', v => { it.label = v.trim().slice(0, 200); }, 'text');
+  field('Text size mm', it.tsize ? Math.round(it.tsize) : '', v => { it.tsize = +v > 0 ? Math.min(5000, +v) : 0; });
   field('Width mm', Math.round(it.w), v => { if (+v > 0) it.w = +v; });
   field('Depth mm', Math.round(it.d), v => { if (+v > 0) it.d = +v; });
   field('Clear mm', Math.round(it.clear), v => { if (+v >= 0) it.clear = +v; });
@@ -1751,7 +1787,7 @@ function statePayload() {
     active_option: st.activeOption || '',
     notes_imported: st.notesImported,
     rooms: st.rooms.map(r => ({ id: r.id, name: r.name, poly: r.poly.map(pt) })),
-    items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: clampNum(i.w, 1, 50000), d: clampNum(i.d, 1, 50000), clear: clampNum(i.clear, 0, 10000), option: i.option, status: i.status, source: i.source || 'user', note: i.note || '', label: i.label || '', replaces: i.replaces || '', x: i.x, y: i.y, rot: i.rot || 0 })),
+    items: st.items.map(i => ({ id: i.id, kind: i.kind, name: i.name, w: clampNum(i.w, 1, 50000), d: clampNum(i.d, 1, 50000), clear: clampNum(i.clear, 0, 10000), option: i.option, status: i.status, source: i.source || 'user', note: i.note || '', label: i.label || '', tsize: clampNum(i.tsize || 0, 0, 5000), replaces: i.replaces || '', x: i.x, y: i.y, rot: i.rot || 0 })),
     measures: st.measures.map(m => ({ a: pt(m.a), b: pt(m.b) })),
     marks: st.marks.map(m => ({ id: m.id, type: m.type, color: m.color, width: m.width, size: m.size, text: m.text || '', pts: m.pts.map(pt) })),
     custom_items: st.customItems.map(c => ({ kind: c.kind, name: c.name, w: clampNum(c.w, 1, 50000), d: clampNum(c.d, 1, 50000), clear: clampNum(c.clear, 0, 10000) })),
@@ -1887,6 +1923,33 @@ function cancelMark(d) {
   renderOverlay();
 }
 
+// Double-click a block or shape to edit its text, make it bigger/smaller or fit it automatically.
+const ied = $('item-ed'), iedText = $('ied-text');
+let iedItem = null;
+function closeItemEditor() { if (!iedItem) return; iedItem = null; ied.style.display = 'none'; renderSelected(); }
+function openItemEditor(it) {
+  closeItemEditor(); const geo = itemGeom(it); if (!geo) return;
+  iedItem = it; selectItem(it.id);
+  const { k, tx, ty } = st.view, r = svg.getBoundingClientRect();
+  const left = Math.min(Math.max(it.x * k + tx - 115, 4), r.width - 238), top = Math.min(Math.max(it.y * k + ty + (Math.max(it.w, it.d) / geo.s) * k / 2 + 8, 4), r.height - 110);
+  Object.assign(ied.style, { display: 'block', left: left + 'px', top: top + 'px' });
+  iedText.value = it.label || ''; iedSize(); iedText.focus(); iedText.select();
+}
+function iedSize() { const g = iedItem && itemGeom(iedItem); $('ied-sz').textContent = !g ? '' : iedItem.tsize ? Math.round(iedItem.tsize) + ' mm' : isShape(iedItem) ? 'auto' : 'standard'; }
+function iedChanged() { scheduleSave(); renderRooms(); renderOverlay(); iedSize(); }
+function iedScale(f) {
+  const it = iedItem, g = it && itemGeom(it); if (!g) return;
+  const cur = it.tsize || (isShape(it) ? autoFit(it, g) * g.s : 10 / st.view.k * 0.9 * g.s);
+  it.tsize = Math.max(5, Math.min(5000, Math.round(cur * f))); iedChanged();
+}
+iedText.addEventListener('input', () => { if (iedItem) { iedItem.label = iedText.value.slice(0, 200); iedChanged(); } });
+iedText.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); closeItemEditor(); } });
+for (const id of ['ied-dn', 'ied-up', 'ied-auto', 'ied-done']) $(id).addEventListener('mousedown', e => e.preventDefault());   // keep focus in the text box
+$('ied-dn').onclick = () => iedScale(1 / 1.2);
+$('ied-up').onclick = () => iedScale(1.2);
+$('ied-auto').onclick = () => { if (iedItem) { iedItem.tsize = 0; iedChanged(); } };
+$('ied-done').onclick = closeItemEditor;
+ied.addEventListener('focusout', e => { if (iedItem && !ied.contains(e.relatedTarget)) setTimeout(() => { if (iedItem && !ied.contains(document.activeElement)) closeItemEditor(); }, 0); });
 const tb = $('mk-textbox');
 let textAt = null;
 function cancelText() { if (!textAt) return; textAt = null; tb.style.display = 'none'; tb.value = ''; }
@@ -1965,7 +2028,7 @@ function pasteClip() {
     const s = mmPerPtAt(src.x, src.y) || 25.4 / 72 * 10, d = (300 * st.pasteN) / s;
     x += d; y += d;
   }
-  const it = { id: uid(), kind: src.kind, name: src.name, label: src.label || '', w: src.w, d: src.d, clear: src.clear, option: st.activeOption, status: c.cut ? src.status : 'pending', x, y, rot: src.rot || 0 };
+  const it = { id: uid(), kind: src.kind, name: src.name, label: src.label || '', tsize: src.tsize || 0, w: src.w, d: src.d, clear: src.clear, option: st.activeOption, status: c.cut ? src.status : 'pending', x, y, rot: src.rot || 0 };
   st.items.push(it);
   if (c.cut) { c.cut = false; c.option = it.option; c.page = st.page; c.item = { ...it }; }
   selectItem(it.id); scheduleSave(); renderRooms(); renderOptions(); renderClip();
@@ -2111,7 +2174,12 @@ svg.addEventListener('pointercancel', () => {
   drag = null; st.pending = []; st.hover = null; renderOverlay();
   if (moved) { scheduleSave(); renderRooms(); renderSelected(); renderOptions(); }
 });
-svg.addEventListener('dblclick', () => { if (st.mode === 'room') closeRoom(); });
+svg.addEventListener('dblclick', e => {
+  if (st.mode === 'room') { closeRoom(); return; }
+  if (st.mode) return;
+  const it = hitItem(...screenToWorld(e.clientX, e.clientY));
+  if (it) openItemEditor(it);
+});
 window.addEventListener('keydown', e => {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
   const sel = st.items.find(i => i.id === st.selected);

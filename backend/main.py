@@ -261,6 +261,7 @@ class Item(BaseModel):
     source: Literal["user", "ai"] = "user"
     note: str = Field(default="", max_length=500)    # why the assistant proposed it
     label: str = Field(default="", max_length=200)   # free text the user writes inside the block
+    tsize: float = Field(default=0, ge=0, le=5000)   # size of that text in mm (0 = automatic)
     replaces: str = Field(default="", max_length=40)  # id of the item this proposal supersedes when accepted
     x: float = Field(ge=-1e6, le=1e6)      # centre, PDF points
     y: float = Field(ge=-1e6, le=1e6)
